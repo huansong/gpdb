@@ -347,7 +347,7 @@ static void check_expressions_in_partition_key(PartitionSpec *spec, core_yyscan_
 %type <node>	vac_analyze_option_arg
 %type <boolean>	opt_or_replace
 				opt_grant_grant_option opt_grant_admin_option
-				opt_nowait opt_if_exists opt_with_data
+				opt_nowait opt_if_exists opt_with_data opt_coordinatoronly
 				opt_transaction_chain
 %type <ival>	opt_nowait_or_skip
 
@@ -13698,13 +13698,22 @@ using_clause:
  *
  *****************************************************************************/
 
-LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait
+LockStmt:	LOCK_P opt_table relation_expr_list opt_lock opt_nowait opt_coordinatoronly
 				{
 					LockStmt *n = makeNode(LockStmt);
 
 					n->relations = $3;
 					n->mode = $4;
 					n->nowait = $5;
+					n->coordinatoronly = $6;
+					if (n->coordinatoronly && n->mode != AccessShareLock)
+					{
+						ereport(ERROR,
+								(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+								errmsg("This lock mode is not supported for COORDINATOR ONLY"),
+							 	errhint("only ACCESS SHARE mode is supported for COORDINATOR ONLY"),
+								parser_errposition(@6)));
+					}
 					$$ = (Node *)n;
 				}
 		;
@@ -13733,6 +13742,10 @@ opt_nowait_or_skip:
 			| /*EMPTY*/						{ $$ = LockWaitBlock; }
 		;
 
+opt_coordinatoronly: MASTER ONLY					{ $$ = true; }
+		| COORDINATOR ONLY				{ $$ = true; }
+		| /*EMPTY*/					{ $$ = false; }
+		;
 
 /*****************************************************************************
  *
