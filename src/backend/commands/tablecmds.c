@@ -5097,7 +5097,9 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 				continue;
 
 			/*
-			 * Appropriate lock was obtained by phase 1, needn't get it again
+			 * Open the relation and store it in tab.  This allows subroutines
+			 * close and reopen, if necessary.  Appropriate lock was obtained
+			 * by phase 1, needn't get it again.
 			 */
 			tab->rel = relation_open(tab->relid, NoLock);
 
