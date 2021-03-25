@@ -4325,6 +4325,7 @@ _readPartitionCmd(void)
 
 	READ_NODE_FIELD(name);
 	READ_NODE_FIELD(bound);
+	READ_BOOL_FIELD(concurrent);
 
 	READ_DONE();
 }

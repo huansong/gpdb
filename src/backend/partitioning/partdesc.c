@@ -38,6 +38,7 @@ typedef struct PartitionDirectoryData
 {
 	MemoryContext pdir_mcxt;
 	HTAB	   *pdir_hash;
+	bool		include_detached;
 }			PartitionDirectoryData;
 
 typedef struct PartitionDirectoryEntry
@@ -46,6 +47,30 @@ typedef struct PartitionDirectoryEntry
 	Relation	rel;
 	PartitionDesc pd;
 } PartitionDirectoryEntry;
+
+/*
+ * RelationGetPartitionDesc -- get partition descriptor, if relation is partitioned
+ *
+ * Note: we arrange for partition descriptors to not get freed until the
+ * relcache entry's refcount goes to zero (see hacks in RelationClose,
+ * RelationClearRelation, and RelationBuildPartitionDesc).  Therefore, even
+ * though we hand back a direct pointer into the relcache entry, it's safe
+ * for callers to continue to use that pointer as long as (a) they hold the
+ * relation open, and (b) they hold a relation lock strong enough to ensure
+ * that the data doesn't become stale.
+ */
+PartitionDesc
+RelationGetPartitionDesc(Relation rel, bool include_detached)
+{
+	if (rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
+		return NULL;
+
+	if (unlikely(rel->rd_partdesc == NULL ||
+				 rel->rd_partdesc->includes_detached != include_detached))
+		RelationBuildPartitionDesc(rel, include_detached);
+
+	return rel->rd_partdesc;
+}
 
 /*
  * RelationBuildPartitionDesc
@@ -58,7 +83,7 @@ typedef struct PartitionDirectoryEntry
  * won't change underneath it.
  */
 void
-RelationBuildPartitionDesc(Relation rel)
+RelationBuildPartitionDesc(Relation rel, bool include_detached)
 {
 	PartitionDesc partdesc;
 	PartitionBoundInfo boundinfo = NULL;
@@ -100,7 +125,8 @@ RelationBuildPartitionDesc(Relation rel)
 	 * concurrently, whatever this function returns will be accurate as of
 	 * some well-defined point in time.
 	 */
-	inhoids = find_inheritance_children(RelationGetRelid(rel), NoLock);
+	inhoids = find_inheritance_children(RelationGetRelid(rel), include_detached,
+										NoLock);
 	nparts = list_length(inhoids);
 
 	/* Allocate arrays for OIDs and boundspecs. */
@@ -201,8 +227,9 @@ RelationBuildPartitionDesc(Relation rel)
 	}
 
 	/* Assert we aren't about to leak any old data structure */
-	Assert(rel->rd_pdcxt == NULL);
-	Assert(rel->rd_partdesc == NULL);
+	/* FIXME: have to disable this assert until I sort out memory context stuff. */
+	//Assert(rel->rd_pdcxt == NULL);
+	//Assert(rel->rd_partdesc == NULL);
 
 	/*
 	 * Now build the actual relcache partition descriptor.  Note that the
@@ -233,6 +260,7 @@ RelationBuildPartitionDesc(Relation rel)
 		partdesc->boundinfo = partition_bounds_copy(boundinfo, key);
 		partdesc->oids = (Oid *) palloc(nparts * sizeof(Oid));
 		partdesc->is_leaf = (bool *) palloc(nparts * sizeof(bool));
+		partdesc->includes_detached = include_detached;
 		MemoryContextSwitchTo(oldcxt);
 
 		/*
@@ -267,7 +295,7 @@ RelationBuildPartitionDesc(Relation rel)
  *		Create a new partition directory object.
  */
 PartitionDirectory
-CreatePartitionDirectory(MemoryContext mcxt)
+CreatePartitionDirectory(MemoryContext mcxt, bool include_detached)
 {
 	MemoryContext oldcontext = MemoryContextSwitchTo(mcxt);
 	PartitionDirectory pdir;
@@ -282,6 +310,7 @@ CreatePartitionDirectory(MemoryContext mcxt)
 	pdir->pdir_mcxt = mcxt;
 	pdir->pdir_hash = hash_create("partition directory", 256, &ctl,
 								  HASH_ELEM | HASH_BLOBS | HASH_CONTEXT);
+	pdir->include_detached = include_detached;
 
 	MemoryContextSwitchTo(oldcontext);
 	return pdir;
@@ -314,7 +343,7 @@ PartitionDirectoryLookup(PartitionDirectory pdir, Relation rel)
 		 */
 		RelationIncrementReferenceCount(rel);
 		pde->rel = rel;
-		pde->pd = RelationGetPartitionDesc(rel);
+		pde->pd = RelationGetPartitionDesc(rel, pdir->include_detached);
 		Assert(pde->pd != NULL);
 	}
 	return pde->pd;

@@ -457,7 +457,7 @@ CheckIndexCompatible(Oid oldId,
  * GetCurrentVirtualXIDs.  If, during any iteration, a particular vxid
  * doesn't show up in the output, we know we can forget about it.
  */
-static void
+void
 WaitForOlderSnapshots(TransactionId limitXmin, bool progress)
 {
 	int			n_old_snapshots;
@@ -1262,7 +1262,7 @@ DefineIndex(Oid relationId,
 	 */
 	if (partitioned && stmt->relation && !stmt->relation->inh)
 	{
-		PartitionDesc pd = RelationGetPartitionDesc(rel);
+		PartitionDesc pd = RelationGetPartitionDesc(rel, false);
 
 		if (pd->nparts != 0)
 			flags |= INDEX_CREATE_INVALID;
@@ -1330,7 +1330,7 @@ DefineIndex(Oid relationId,
 		 *
 		 * If we're called internally (no stmt->relation), recurse always.
 		 */
-		partdesc = RelationGetPartitionDesc(rel);
+		partdesc = RelationGetPartitionDesc(rel, false);
 		if ((!stmt->relation || stmt->relation->inh) && partdesc->nparts > 0)
 		{
 			int			nparts = partdesc->nparts;

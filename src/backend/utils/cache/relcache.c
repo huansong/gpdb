@@ -1188,7 +1188,7 @@ RelationBuildDesc(Oid targetRelId, bool insertIt)
 	if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE)
 	{
 		RelationBuildPartitionKey(relation);
-		RelationBuildPartitionDesc(relation);
+		RelationBuildPartitionDesc(relation, false);
 	}
 	else
 	{
@@ -4080,7 +4080,7 @@ RelationCacheInitializePhase3(void)
 		if (relation->rd_rel->relkind == RELKIND_PARTITIONED_TABLE &&
 			relation->rd_partdesc == NULL)
 		{
-			RelationBuildPartitionDesc(relation);
+			RelationBuildPartitionDesc(relation, false);
 			Assert(relation->rd_partdesc != NULL);
 
 			restart = true;

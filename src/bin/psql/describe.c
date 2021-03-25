@@ -2484,10 +2484,16 @@ describeOneTableDetails(const char *schemaname,
 		char	   *parent_name;
 		char	   *partdef;
 		char	   *partconstraintdef = NULL;
+		char	   *detached;
 
 		printfPQExpBuffer(&buf,
 						  "SELECT inhparent::pg_catalog.regclass,\n"
 						  "  pg_catalog.pg_get_expr(c.relpartbound, inhrelid)");
+
+		appendPQExpBuffer(&buf,
+						  pset.sversion >= 120000 ? "inhdetachpending" :
+						  "false as inhdetachpending");
+
 		/* If verbose, also request the partition constraint definition */
 		if (verbose)
 			appendPQExpBuffer(&buf,
@@ -2505,12 +2511,14 @@ describeOneTableDetails(const char *schemaname,
 		{
 			parent_name = PQgetvalue(result, 0, 0);
 			partdef = PQgetvalue(result, 0, 1);
+			detached = PQgetvalue(result, 0, 2);
 
-			if (PQnfields(result) == 3 && !PQgetisnull(result, 0, 2))
-				partconstraintdef = PQgetvalue(result, 0, 2);
+			if (PQnfields(result) == 4 && !PQgetisnull(result, 0, 3))
+				partconstraintdef = PQgetvalue(result, 0, 3);
 
-			printfPQExpBuffer(&tmpbuf, _("Partition of: %s %s"), parent_name,
-							  partdef);
+			printfPQExpBuffer(&tmpbuf, _("Partition of: %s %s%s"), parent_name,
+							  partdef,
+							  strcmp(detached, "t") == 0 ? " DETACH PENDING" : "");
 			printTableAddFooter(&cont, tmpbuf.data);
 
 			if (verbose)
@@ -3534,9 +3542,20 @@ describeOneTableDetails(const char *schemaname,
 		}
 
 		/* print child tables (with additional info if partitions) */
-		if (pset.sversion >= 100000)
+		if (pset.sversion >= 120000)
 			printfPQExpBuffer(&buf,
 							  "SELECT c.oid::pg_catalog.regclass,"
+							  " inhdetachpending,"
+							  "       pg_catalog.pg_get_expr(c.relpartbound, c.oid),"
+							  "       c.relkind"
+							  " FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i"
+							  " WHERE c.oid=i.inhrelid AND i.inhparent = '%s'"
+							  " ORDER BY pg_catalog.pg_get_expr(c.relpartbound, c.oid) = 'DEFAULT',"
+							  "          c.oid::pg_catalog.regclass::pg_catalog.text;", oid);
+		else if (pset.sversion >= 100000)
+			printfPQExpBuffer(&buf,
+							  "SELECT c.oid::pg_catalog.regclass,"
+							  " false AS inhdetachpending,"
 							  "       pg_catalog.pg_get_expr(c.relpartbound, c.oid),"
 							  "       c.relkind"
 							  " FROM pg_catalog.pg_class c, pg_catalog.pg_inherits i"
@@ -3607,7 +3626,7 @@ describeOneTableDetails(const char *schemaname,
 				{
 					char	   *partitioned_note;
 
-					if (*PQgetvalue(result, i, 2) == RELKIND_PARTITIONED_TABLE)
+					if (*PQgetvalue(result, i, 3) == RELKIND_PARTITIONED_TABLE)
 						partitioned_note = ", PARTITIONED";
 					else
 						partitioned_note = "";
@@ -3621,6 +3640,8 @@ describeOneTableDetails(const char *schemaname,
 										  ctw, "", PQgetvalue(result, i, 0), PQgetvalue(result, i, 1),
 										  partitioned_note);
 				}
+				if (strcmp(PQgetvalue(result, i, 2), "t") == 0)
+					appendPQExpBuffer(&buf, " (DETACH PENDING)");
 				if (i < tuples - 1)
 					appendPQExpBufferChar(&buf, ',');
 

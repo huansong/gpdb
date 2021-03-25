@@ -5023,6 +5023,7 @@ _outPartitionCmd(StringInfo str, const PartitionCmd *node)
 
 	WRITE_NODE_FIELD(name);
 	WRITE_NODE_FIELD(bound);
+	WRITE_BOOL_FIELD(concurrent);
 }
 
 static void
