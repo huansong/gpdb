@@ -310,7 +310,7 @@ static void ATController(AlterTableStmt *parsetree,
 static void ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 					  bool recurse, bool recursing, LOCKMODE lockmode);
 static void ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode);
-static void ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
+static void ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 					  AlterTableCmd *cmd, LOCKMODE lockmode);
 static void ATRewriteTables(AlterTableStmt *parsetree,
 							List **wqueue, LOCKMODE lockmode);
@@ -5091,7 +5091,6 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 		{
 			AlteredTableInfo *tab = (AlteredTableInfo *) lfirst(ltab);
 			List	   *subcmds = tab->subcmds[pass];
-			Relation	rel;
 			ListCell   *lcmd;
 
 			if (subcmds == NIL)
@@ -5100,10 +5099,10 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 			/*
 			 * Appropriate lock was obtained by phase 1, needn't get it again
 			 */
-			rel = relation_open(tab->relid, NoLock);
+			tab->rel = relation_open(tab->relid, NoLock);
 
 			foreach(lcmd, subcmds)
-				ATExecCmd(wqueue, tab, rel,
+				ATExecCmd(wqueue, tab,
 						  castNode(AlterTableCmd, lfirst(lcmd)),
 						  lockmode);
 
@@ -5115,7 +5114,11 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
 			if (pass == AT_PASS_ALTER_TYPE)
 				ATPostAlterTypeCleanup(wqueue, tab, lockmode);
 
-			relation_close(rel, NoLock);
+			if (tab->rel)
+			{
+				relation_close(tab->rel, NoLock);
+				tab->rel = NULL;
+			}
 		}
 	}
 
@@ -5145,10 +5148,11 @@ ATRewriteCatalogs(List **wqueue, LOCKMODE lockmode)
  * behavior from Postgres upstream.
  */
 static void
-ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
+ATExecCmd(List **wqueue, AlteredTableInfo *tab,
 		  AlterTableCmd *cmd, LOCKMODE lockmode)
 {
 	ObjectAddress address = InvalidObjectAddress;
+	Relation	rel = tab->rel;
 
 	switch (cmd->subtype)
 	{
@@ -6590,6 +6594,7 @@ ATGetQueueEntry(List **wqueue, Relation rel)
 	 */
 	tab = (AlteredTableInfo *) palloc0(sizeof(AlteredTableInfo));
 	tab->relid = relid;
+	tab->rel = NULL;			/* set later */
 	tab->relkind = rel->rd_rel->relkind;
 	tab->oldDesc = CreateTupleDescCopyConstr(RelationGetDescr(rel));
 	tab->newAccessMethod = InvalidOid;

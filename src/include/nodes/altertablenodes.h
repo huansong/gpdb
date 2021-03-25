@@ -59,6 +59,8 @@ typedef struct AlteredTableInfo
 	Oid			relid;			/* Relation to work on */
 	char		relkind;		/* Its relkind */
 	TupleDesc	oldDesc;		/* Pre-modification tuple descriptor */
+	/* Transiently set during Phase 2, normally set to NULL */
+	Relation	rel;
 	/* Information saved by Phase 1 for Phase 2: */
 	List	   *subcmds[AT_NUM_PASSES]; /* Lists of AlterTableCmd */
 	/* Information saved by Phases 1/2 for Phase 3: */
