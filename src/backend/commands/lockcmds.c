@@ -153,7 +153,7 @@ LockTableRecurse(Oid reloid, LOCKMODE lockmode, bool nowait, Oid userid)
 	List	   *children;
 	ListCell   *lc;
 
-	children = find_inheritance_children(reloid, false, NoLock);
+	children = find_inheritance_children(reloid, false, NoLock, NULL);
 
 	foreach(lc, children)
 	{

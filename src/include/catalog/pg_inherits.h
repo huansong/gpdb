@@ -49,8 +49,8 @@ FOREIGN_KEY(inhparent REFERENCES pg_class(oid));
 typedef FormData_pg_inherits *Form_pg_inherits;
 
 
-extern List *find_inheritance_children(Oid parentrelId, bool include_detached,
-									   LOCKMODE lockmode);
+extern List *find_inheritance_children(Oid parentrelId, bool omit_detached,
+									   LOCKMODE lockmode, bool *detached_exist);
 extern List *find_all_inheritors(Oid parentrelId, LOCKMODE lockmode,
 								 List **parents);
 extern bool has_subclass(Oid relationId);

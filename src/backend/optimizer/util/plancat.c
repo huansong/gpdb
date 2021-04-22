@@ -2397,7 +2397,7 @@ set_relation_partition_info(PlannerInfo *root, RelOptInfo *rel,
 	if (root->glob->partition_directory == NULL)
 	{
 		root->glob->partition_directory =
-			CreatePartitionDirectory(CurrentMemoryContext, false);
+			CreatePartitionDirectory(CurrentMemoryContext, true);
 	}
 
 	partdesc = PartitionDirectoryLookup(root->glob->partition_directory,

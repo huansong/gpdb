@@ -2594,7 +2594,7 @@ gpdb::GetRelChildIndexes(Oid reloid)
 		{
 			return NIL;
 		}
-		partoids = find_inheritance_children(reloid, false, NoLock);
+		partoids = find_inheritance_children(reloid, false, NoLock, NULL);
 	}
 	GP_WRAP_END;
 
