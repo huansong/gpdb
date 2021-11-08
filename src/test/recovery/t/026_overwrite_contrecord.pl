@@ -107,7 +107,7 @@ sleep 5;
 my $log = slurp_file($node_standby->logfile);
 like(
 	$log,
-	qr[sucessfully skipped missing contrecord at],
+	qr[successfully skipped missing contrecord at],
 	"found log line in standby");
 
 $node_standby->stop;
