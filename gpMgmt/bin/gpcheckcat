@@ -667,6 +667,181 @@ def checkPGClass():
 
 
 #############
+def checkMissingRelfile():
+    logger.info('-----------------------------------')
+    logger.info('Checking missing relation files...')
+
+    # Mainly for performance reasons, we could not simply constructing filepath 
+    # for each and every relation (e.g. using pg_relation_filepath()) and check 
+    # each file's existence (e.g. using pg_stat_file()). Intead, we end up using
+    # this rather lengthy function which "divide & conquer" the task into three parts:
+    #
+    # 1. Relations with pg_class.relfilenode = 0 (global and a few local catalogs).
+    #    There's a limited number of such relations so we can take the convenient 
+    #    but costly way to get their filepath (pg_relation_filepath).
+    # 2. Relations in the default tablespace ('base/'). The tablespace path for
+    #    these tables is fixed for the current database, so we can construct it
+    #    and use pg_ls_dir to list and compare the files.
+    # 3. Relations in the user tablespace ('pg_tblspc/'). Similar to 2, but we'll
+    #    have to check and construct each tablespace the user created. For GPDB,
+    #    need to find GP_TABLESPACE_VERSION_DIRECTORY in the path too.
+    # 
+    # We consolidate entries of any missing files in each part by inserting them 
+    # to a temp table and finally return it. The temp table should be deleted
+    # automatically after the exit of each connection.
+    qry = '''
+    SET client_min_messages TO WARNING;
+    DROP FUNCTION IF EXISTS public.gpcheckcat_chk_refile;
+    
+    CREATE FUNCTION public.gpcheckcat_chk_refile ()
+        RETURNS TABLE (
+            oid oid,
+            relname name)
+        LANGUAGE plpgsql
+        AS $$
+    DECLARE
+        r record;
+        gp_ts_dir text;
+    BEGIN
+        SET client_min_messages TO WARNING;
+        CREATE TEMP TABLE gpcheckcat_chk_refile_tt (
+            o oid,
+            relname name
+        );
+
+    -- First, check relfiles with relfilenode=0
+    INSERT INTO gpcheckcat_chk_refile_tt
+    SELECT
+        c.oid,
+        c.relname
+    FROM
+        pg_class c
+        JOIN pg_namespace ns ON c.relnamespace = ns.oid
+    WHERE
+        relfilenode = 0
+        AND relkind = 'r'
+        AND pg_stat_file(pg_relation_filepath(ns.nspname || '.' || c.relname::text), TRUE)::text IS NULL;
+
+    -- Secondly, check the default tablespace
+    INSERT INTO gpcheckcat_chk_refile_tt WITH files AS (
+        SELECT
+            *
+        FROM
+            pg_ls_dir('base/' || (
+                    SELECT
+                        d.oid::text
+                    FROM pg_database d
+                    WHERE
+                        d.datname = current_database())))
+    SELECT
+        c.oid,
+        c.relname
+    FROM
+        pg_class c
+    WHERE
+        relfilenode != 0
+        AND reltablespace = 0
+        AND CASE WHEN relpersistence != 't' THEN
+            relfilenode::text
+        ELSE
+            ('t_' || relfilenode::text)
+        END NOT IN (
+            SELECT
+                *
+            FROM
+                files);
+
+        -- Finally, check each user-created tablespace.
+        -- Get the GP_TABLESPACE_VERSION_DIRECTORY first.
+        gp_ts_dir = (
+            SELECT
+                substring(pg_relation_filepath(ns.nspname || '.' || c.relname::text), 'GPDB_[0-9]_[0-9]*')
+            FROM
+                pg_class c
+                JOIN pg_tablespace t ON c.reltablespace = t.oid
+                JOIN pg_namespace ns ON c.relnamespace = ns.oid
+            WHERE
+                t.spcname != 'pg_default'
+                AND t.spcname != 'pg_global'
+            LIMIT 1);
+        IF gp_ts_dir IS NOT NULL THEN
+            FOR r IN
+            SELECT
+                ts.oid
+            FROM
+                pg_tablespace ts
+            WHERE
+                spcname != 'pg_default'
+                AND spcname != 'pg_global' LOOP
+                    INSERT INTO gpcheckcat_chk_refile_tt WITH files AS (
+                        SELECT
+                            *
+                        FROM
+                            pg_ls_dir('pg_tblspc/' || r.oid::text || '/' || gp_ts_dir || '/' || (
+                                    SELECT
+                                        d.oid::text
+                                    FROM pg_database d
+                                    WHERE
+                                        d.datname = current_database())))
+                SELECT
+                    c.oid,
+                    c.relname
+                FROM
+                    pg_class c
+                    JOIN pg_tablespace t ON c.reltablespace = t.oid
+                WHERE
+                    c.reltablespace = r.oid
+                        AND relfilenode != 0
+                        AND CASE WHEN relpersistence != 't' THEN
+                            relfilenode::text
+                        ELSE
+                            ('t_' || relfilenode::text)
+                        END NOT IN (
+                            SELECT
+                                *
+                            FROM
+                                files);
+                END LOOP;
+        END IF;
+        RETURN query (
+            SELECT
+                *
+            FROM gpcheckcat_chk_refile_tt);
+    END;
+    $$;
+    '''
+    db = connect2(GV.cfg[GV.coordinator_dbid], utilityMode=False)
+    db.query(qry)
+
+    # Run the queries on all segments and gather the results
+    qry = '''
+    SELECT * FROM public.gpcheckcat_chk_refile();
+    '''
+    err = connect2run(qry, ('oid', 'relname'))
+
+    # Cleanup
+    qry = '''
+    SET client_min_messages TO WARNING;
+    DROP FUNCTION IF EXISTS public.gpcheckcat_chk_refile;
+    '''
+    db = connect2(GV.cfg[GV.coordinator_dbid], utilityMode=False)
+    db.query(qry)
+
+    if not err:
+        logger.info('[OK] missing_relfile')
+    else:
+        GV.checkStatus = False
+        setError(ERROR_NOREPAIR)
+        logger.info('[FAIL] missing_relfile')
+        logger.error('missing_relfile test found %d missing relation file(s)' % len(err))
+        logger.error(qry)
+        for e in err[0:100]:
+            logger.error(formatErr(e[0], e[1], e[2]))
+        if len(err) > 100:
+            logger.error("...")
+
+
+#############
 def checkPGNamespace():
     # Check for objects in various catalogs that are in a schema that has
     # been dropped.
@@ -1982,6 +2157,14 @@ all_checks = {
             "fn": lambda: checkAOSegVpinfo(),
             "version": 'main',
             "order": 15,
+            "online": False
+        },
+    "missing_relfile":
+        {
+            "description": "Check pg_class entry that does not have any correspond relation files on disk",
+            "fn": lambda: checkMissingRelfile(),
+            "version": 'main',
+            "order": 16,
             "online": False
         }
 }
