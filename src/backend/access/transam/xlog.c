@@ -7357,7 +7357,8 @@ StartupXLOG(void)
 				 * We do it here instead of xlog_redo like 7X because we need
 				 * xlogreader in this function.
 				 */
-				VerifyOverwriteContrecord(record, xlogreader);
+				if (record->xl_rmid == RM_XLOG_ID)
+					VerifyOverwriteContrecord(record, xlogreader);
 
 				/* Pop the error context stack */
 				error_context_stack = errcallback.previous;
