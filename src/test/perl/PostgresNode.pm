@@ -439,8 +439,7 @@ sub init
 		# print $conf "max_wal_size = 128MB\n";
 		print $conf "shared_buffers = 1MB\n";
 		print $conf "wal_log_hints = on\n";
-		# GPDB: Hot Standby is not supported
-		# print $conf "hot_standby = on\n";
+		print $conf "hot_standby = on\n";
 		print $conf "max_connections = 20\n";
 	}
 

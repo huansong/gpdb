@@ -20,6 +20,9 @@ plan tests => 2;
 my $node = PostgresNode->get_new_node('primary');
 $node->init(allows_streaming => 1);
 $node->append_conf('postgresql.conf', 'wal_keep_segments=16');
+# TAP tests enabled this by default. Unfornately it would create a 
+# PANIC on standby for the end-of-recovery checkpoint of primary.
+$node->append_conf('postgresql.conf', 'hot_standby=off');
 $node->start;
 
 $node->safe_psql('postgres', 'create table filler (a int, b text)');
@@ -91,9 +94,8 @@ $node->start;
 $node->safe_psql('postgres',
 	qq{create table foo (a text); insert into foo values ('hello')});
 
-# We couldn't poll query on mirror because no hot standby is supported in GPDB
+# See earlier comments for hot_standby=off. 
 sleep 5;
-
 #my $until_lsn =
 #  $node->safe_psql('postgres', "SELECT pg_current_xlog_insert_location()");
 #my $caughtup_query =
