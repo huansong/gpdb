@@ -1753,13 +1753,15 @@ heap_create_with_catalog(const char *relname,
 
 		/*
 		 * Make a dependency link to force the relation to be deleted if its
-		 * access method is. Do this only for relation and materialized views.
+		 * access method is. Do this only for relation, materialized views and
+		 * partitioned tables.
 		 *
 		 * No need to add an explicit dependency for the toast table, as the
 		 * main table depends on it.
 		 */
 		if (relkind == RELKIND_RELATION ||
-			relkind == RELKIND_MATVIEW)
+			relkind == RELKIND_MATVIEW ||
+			relkind == RELKIND_PARTITIONED_TABLE)
 		{
 			referenced.classId = AccessMethodRelationId;
 			referenced.objectId = accessmtd;
@@ -2399,6 +2401,13 @@ heap_drop_with_catalog(Oid relid)
 	}
 
 	/*
+	 * append-only table? delete the corresponding pg_appendonly tuple
+	 * unless it is a partition root table which has no pg_appendonly entry.
+	 */
+	if (is_appendonly_rel && rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
+		RemoveAppendonlyEntry(relid);
+
+	/*
 	 * Close relcache entry, but *keep* AccessExclusiveLock (unless this is
 	 * a child partition) on the relation until transaction commit.  This
 	 * ensures no one else will try to do something with the doomed relation.
@@ -2466,12 +2475,6 @@ heap_drop_with_catalog(Oid relid)
 	 * delete error log file
 	 */
 	ErrorLogDelete(MyDatabaseId, relid);
-
-	/*
-	 * append-only table? delete the corresponding pg_appendonly tuple
-	 */
-	if (is_appendonly_rel)
-		RemoveAppendonlyEntry(relid);
 
 	/* MPP-6929: metadata tracking */
 	MetaTrackDropObject(RelationRelationId,

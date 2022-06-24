@@ -664,6 +664,59 @@ DROP TABLE heap2co2;
 DROP TABLE heap2co3;
 DROP TABLE heap2co4;
 
+-- Scenario 9. Altering partition tables
+-- Altering the storage model at the partition root should change the storage model for all existing children,
+-- including all the subpartitions.
+-- FIXME: currently children tables aren't inheriting reloptions of the root. After that is corrected, we 
+-- should add a corresponding test case for ALTER TABLE here too.
+CREATE TABLE atsetam_part(a int, b int) PARTITION BY RANGE(a);
+CREATE TABLE atsetam_part_1 partition OF atsetam_part FOR VALUES FROM (1) to (100);
+CREATE TABLE atsetam_part_2 partition OF atsetam_part FOR VALUES FROM (101) to (200) PARTITION BY RANGE(a);
+CREATE TABLE atsetam_part_2_1 partition OF atsetam_part_2 FOR VALUES FROM (101) to (150);
+CREATE TABLE atsetam_part_2_2 partition OF atsetam_part_2 FOR VALUES FROM (151) to (200);
+
+ALTER TABLE atsetam_part SET ACCESS METHOD ao_row WITH (blocksize=65536, compresslevel=7);
+
+SELECT c.relname, a.amname, c.reloptions FROM pg_class c JOIN pg_am a ON c.relam = a.oid WHERE c.relname LIKE 'atsetam_part%';
+
+-- altering it again with the same AM and reloptions. Nothing should change.
+ALTER TABLE atsetam_part SET ACCESS METHOD ao_row WITH (blocksize=65536, compresslevel=7);
+SELECT c.relname, a.amname, c.reloptions FROM pg_class c JOIN pg_am a ON c.relam = a.oid WHERE c.relname LIKE 'atsetam_part%';
+
+-- altering a subpartition root, should apply and only apply to the subpartition root/child.
+ALTER TABLE atsetam_part_2 SET ACCESS METHOD ao_column WITH (compresstype=rle_type, compresslevel=3);
+SELECT c.relname, a.amname, c.reloptions FROM pg_class c JOIN pg_am a ON c.relam = a.oid WHERE c.relname LIKE 'atsetam_part%';
+
+DROP TABLE atsetam_part;
+
+-- Altering the storage model at the partition root with the ONLY keyword should change the 
+-- storage model for all future children. Existing children should remain unaffected.
+CREATE TABLE atsetam_part(a int, b int) PARTITION BY RANGE(a);
+CREATE TABLE atsetam_part_1 partition OF atsetam_part FOR VALUES FROM (1) to (100);
+CREATE TABLE atsetam_part_2 partition OF atsetam_part FOR VALUES FROM (101) to (200) PARTITION BY RANGE(a);
+CREATE TABLE atsetam_part_2_1 partition OF atsetam_part_2 FOR VALUES FROM (101) to (150);
+
+ALTER TABLE ONLY atsetam_part SET ACCESS METHOD ao_row WITH (blocksize=65536, compresslevel=7);
+
+SELECT c.relname, a.amname, c.reloptions FROM pg_class c JOIN pg_am a ON c.relam = a.oid WHERE c.relname LIKE 'atsetam_part%';
+
+-- new subpartition child should inherit the AM of its subpartition root
+CREATE TABLE atsetam_part_2_2 partition OF atsetam_part_2 FOR VALUES FROM (151) to (200);
+SELECT c.relname, a.amname, c.reloptions FROM pg_class c JOIN pg_am a ON c.relam = a.oid WHERE c.relname = 'atsetam_part_2_2';
+
+DROP TABLE atsetam_part;
+
+-- Altering the storage model at a leaf should change the storage model for the leaf.
+CREATE TABLE atsetam_part(a int, b int) PARTITION BY RANGE(a);
+CREATE TABLE atsetam_part_1 partition OF atsetam_part FOR VALUES FROM (1) to (100);
+CREATE TABLE atsetam_part_2 partition OF atsetam_part FOR VALUES FROM (101) to (200);
+
+ALTER TABLE ONLY atsetam_part_1 SET ACCESS METHOD ao_row WITH (blocksize=65536, compresslevel=7);
+
+SELECT c.relname, a.amname, c.reloptions FROM pg_class c JOIN pg_am a ON c.relam = a.oid WHERE c.relname LIKE 'atsetam_part%';
+
+DROP TABLE atsetam_part;
+
 -- Final scenario: the iterations of altering table from storage type "A" to "B" and back to "A".
 -- The following cases will cover all variations of such iterations:
 -- 1. Heap->AO->Heap->AO
