@@ -1,0 +1,5 @@
+# gp_storage_suggestion extension
+comment = 'suggest table storage type'
+default_version = '1.0'
+module_pathname = '$libdir/gp_storage_suggestion'
+relocatable = false
