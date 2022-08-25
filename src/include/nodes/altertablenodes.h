@@ -39,17 +39,18 @@
  */
 
 #define AT_PASS_UNSET			-1	/* UNSET will cause ERROR */
-#define AT_PASS_DROP			0	/* DROP (all flavors) */
-#define AT_PASS_ALTER_TYPE		1	/* ALTER COLUMN TYPE */
-#define AT_PASS_OLD_INDEX		2	/* re-add existing indexes */
-#define AT_PASS_OLD_CONSTR		3	/* re-add existing constraints */
+#define AT_PASS_GP_PART			0	/* GPDB-specific AT for partition */
+#define AT_PASS_DROP			1	/* DROP (all flavors) */
+#define AT_PASS_ALTER_TYPE		2	/* ALTER COLUMN TYPE */
+#define AT_PASS_OLD_INDEX		3	/* re-add existing indexes */
+#define AT_PASS_OLD_CONSTR		4	/* re-add existing constraints */
 /* We could support a RENAME COLUMN pass here, but not currently used */
-#define AT_PASS_ADD_COL			4	/* ADD COLUMN */
-#define AT_PASS_COL_ATTRS		5	/* set other column attributes */
-#define AT_PASS_ADD_INDEX		6	/* ADD indexes */
-#define AT_PASS_ADD_CONSTR		7	/* ADD constraints, defaults */
-#define AT_PASS_MISC			8	/* other stuff */
-#define AT_NUM_PASSES			9
+#define AT_PASS_ADD_COL			5	/* ADD COLUMN */
+#define AT_PASS_COL_ATTRS		6	/* set other column attributes */
+#define AT_PASS_ADD_INDEX		7	/* ADD indexes */
+#define AT_PASS_ADD_CONSTR		8	/* ADD constraints, defaults */
+#define AT_PASS_MISC			9	/* other stuff */
+#define AT_NUM_PASSES			10
 
 typedef struct AlteredTableInfo
 {

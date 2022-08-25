@@ -4119,13 +4119,6 @@ AlterTable(Oid relid, LOCKMODE lockmode, AlterTableStmt *stmt)
  * working queues. By the time we dispatch the command, we have already
  * executed and dispatched those subcommands, so remove them from command
  * we'll dispatch now.
- *
- * GPDB_12_MERGE_FIXME: This is a bit bogus, because if you have multiple
- * ALTER TABLE subcommands in one command, the commands might be executed
- * in different order in the QEs than in the QD. I think it would be better
- * to expand the commands in the ATPrepCmd() phase, and included them in
- * the working queues for dispatching, instead of dispatching them
- * separately in the ATExecCmd() phase.
  */
 static void
 prepare_AlterTableStmt_for_dispatch(AlterTableStmt *stmt)
@@ -5076,7 +5069,7 @@ ATPrepCmd(List **wqueue, Relation rel, AlterTableCmd *cmd,
 		case AT_PartSetTemplate:
 			ATSimplePermissions(rel, ATT_TABLE);
 			/* No command-specific prep needed */
-			pass = AT_PASS_MISC;
+			pass = AT_PASS_GP_PART;
 			break;
 
 		default:				/* oops */
