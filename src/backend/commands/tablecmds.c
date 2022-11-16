@@ -456,7 +456,7 @@ static void ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel,
 								const char *tablespacename, LOCKMODE lockmode);
 static void ATExecSetTableSpace(Oid tableOid, Oid newTableSpace, LOCKMODE lockmode);
 static void ATExecSetTableSpaceNoStorage(Relation rel, Oid newTableSpace);
-static void ATExecSetRelOptions(Relation rel, List *defList,
+static Datum ATExecSetRelOptions(Relation rel, List *defList,
 								AlterTableType operation,
 								bool *aoopt_changed,
 								Oid newam,
@@ -5296,12 +5296,13 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 			/* Set reloptions if specified any. Otherwise handled specially in Phase 3. */
 			{
 				bool aoopt_changed = false;
+				Datum newOptions; 
 
 				/* If we are changing access method, simply remove all the existing ones. */
 				if (OidIsValid(tab->newAccessMethod))
 					clear_rel_opts(rel);
 
-				ATExecSetRelOptions(rel, (List *) cmd->def, cmd->subtype, &aoopt_changed, tab->newAccessMethod, lockmode);
+				newOptions = ATExecSetRelOptions(rel, (List *) cmd->def, cmd->subtype, &aoopt_changed, tab->newAccessMethod, lockmode);
 				CommandCounterIncrement(); /* make reloptions change visiable */
 
 				/* 
@@ -5310,7 +5311,10 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 				 * option changed, in which case we'll still have to rewrite.
 				 */
 				if (aoopt_changed)
+				{
 					tab->rewrite |= AT_REWRITE_ALTER_RELOPTS;
+					tab->newOptions = newOptions;
+				}
 			}
 
 			/* If we are changing AM to AOCO, add pg_attribute_encoding entries for each column. */
@@ -5342,12 +5346,16 @@ ATExecCmd(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		case AT_ReplaceRelOptions:	/* replace entire option list */
 			{
 				bool 		aoopt_changed = false;
+				Datum 		newOptions;
 
-				ATExecSetRelOptions(rel, (List *) cmd->def, cmd->subtype, &aoopt_changed, InvalidOid, lockmode);
+				newOptions = ATExecSetRelOptions(rel, (List *) cmd->def, cmd->subtype, &aoopt_changed, InvalidOid, lockmode);
 
 				/* Will rewrite table if there's a change to the AO reloptions. */
 				if (aoopt_changed)
+				{
 					tab->rewrite |= AT_REWRITE_ALTER_RELOPTS;
+					tab->newOptions = newOptions;
+				}
 			}
 			break;
 		case AT_EnableTrig:		/* ENABLE TRIGGER name */
@@ -5743,7 +5751,7 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 			 * persistence. That wouldn't work for pg_class, but that can't be
 			 * unlogged anyway.
 			 */
-			OIDNewHeap = make_new_heap(tab->relid, NewTableSpace, NewAccessMethod,
+			OIDNewHeap = make_new_heap(tab->relid, NewTableSpace, NewAccessMethod, tab->newOptions,
 									   persistence, lockmode, hasIndexes, false);
 
 			/*
@@ -14208,11 +14216,13 @@ ATPrepSetTableSpace(AlteredTableInfo *tab, Relation rel, const char *tablespacen
 /*
  * Set, reset, or replace reloptions.
  *
+ * Return the new options.
+ *
  * GPDB specific arguments: 
  * 	aoopt_changed: whether any AO storage options have been changed in this function.
  * 	newam: the new AM if we will change the table AM. It's InvalidOid if no change is needed.
  */
-static void
+static Datum
 ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 					bool *aoopt_changed, Oid newam, LOCKMODE lockmode)
 {
@@ -14233,7 +14243,7 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 	tableam = (newam != InvalidOid) ? newam : rel->rd_rel->relam;
 
 	if (defList == NIL && operation != AT_ReplaceRelOptions)
-		return;					/* nothing to do */
+		return (Datum)0;					/* nothing to do */
 
 	pgclass = table_open(RelationRelationId, RowExclusiveLock);
 
@@ -14309,7 +14319,24 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 											 tableam == AO_COLUMN_TABLE_AM_OID);
 				/* If reloptions will be changed, indicate so. */
 				if (aoopt_changed != NULL)
+				{
 					*aoopt_changed = !relOptionsEquals(datum, newOptions);
+					/*
+					 * AO options changed means we will perform a table rewrite, which involves copying 
+					 * data from the existing table to a new table. In that case, we should not 
+					 * update pg_class.reloptions of the existing table which might cause problem
+					 * because it doesn't match with the table's storage format. We will pass the new
+					 * options over through the AlteredTableInfo struct.
+					 *
+					 * The exception is partitioned table which won't be rewritten.
+					 */
+					if (*aoopt_changed && rel->rd_rel->relkind != RELKIND_PARTITIONED_TABLE)
+					{
+						ReleaseSysCache(tuple);
+						table_close(pgclass, RowExclusiveLock);
+						return newOptions;
+					}
+				}
 
 			}
 			else
@@ -14462,6 +14489,7 @@ ATExecSetRelOptions(Relation rel, List *defList, AlterTableType operation,
 						   "ALTER",
 						   operation == AT_ResetRelOptions ? "RESET" : "SET"
 				);
+	return newOptions;
 }
 
 /*

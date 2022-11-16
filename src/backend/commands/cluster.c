@@ -662,6 +662,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 	/* Create the transient table that will receive the re-ordered data */
 	OIDNewHeap = make_new_heap(tableOid, tableSpace,
 							   accessMethod,
+							   (Datum)0, /* newoptions */
 							   relpersistence,
 							   AccessExclusiveLock,
 							   true /* createAoBlockDirectory */,
@@ -695,7 +696,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
  * data, then call finish_heap_swap to complete the operation.
  */
 Oid
-make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
+make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod, Datum newoptions,
 			  char relpersistence,
 			  LOCKMODE lockmode,
 			  bool createAoBlockDirectory,
@@ -706,7 +707,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	Oid			OIDNewHeap;
 	Oid			toastid;
 	Relation	OldHeap;
-	HeapTuple	tuple;
+	HeapTuple	tuple = NULL;
 	Datum		reloptions;
 	bool		isNull;
 	Oid			namespaceid;
@@ -722,15 +723,23 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	 */
 
 	/*
-	 * But we do want to use reloptions of the old heap for new heap.
+	 * When the caller passes reloptions to use for the new table, use that.
+	 * Otherwise, copy from the existing pg_class.reloptions of the old.
 	 */
-	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(OIDOldHeap));
-	if (!HeapTupleIsValid(tuple))
-		elog(ERROR, "cache lookup failed for relation %u", OIDOldHeap);
-	reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
-								 &isNull);
-	if (isNull)
-		reloptions = (Datum) 0;
+	if (newoptions != (Datum) 0)
+	{
+		reloptions = newoptions;
+	}
+	else
+	{	
+		tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(OIDOldHeap));
+		if (!HeapTupleIsValid(tuple))
+			elog(ERROR, "cache lookup failed for relation %u", OIDOldHeap);
+		reloptions = SysCacheGetAttr(RELOID, tuple, Anum_pg_class_reloptions,
+									 &isNull);
+		if (isNull)
+			reloptions = (Datum) 0;
+	}
 
 	/* 
 	 * Unless we are changing access method between heap and AO/CO, look further.
@@ -738,8 +747,8 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 	/*
 	 * GPDB: some considerations when AM is going to change between heap and AO/CO:
 	 *
-	 * If user has also requested setting new reloptions, the new reloptions should have
-	 * replaced the old ones at this point. We just need to reuse those on the new table.
+	 * If user has also requested setting new reloptions, we should have that passed in
+	 * and set the 'reloptions' variable. We just need to use those on the new table.
 	 *
 	 * If user does NOT request new reloptions, we should discard the existing reloptions.
 	 * And one more consideration if we are changing the table from heap to AO: we should
@@ -844,7 +853,8 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 										  true);
 	Assert(OIDNewHeap != InvalidOid);
 
-	ReleaseSysCache(tuple);
+	if (HeapTupleIsValid(tuple))
+		ReleaseSysCache(tuple);
 
 	/*
 	 * Advance command counter so that the newly-created relation's catalog
@@ -895,6 +905,7 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, Oid NewAccessMethod,
 		cloneAttributeEncoding(OIDOldHeap,
 							   OIDNewHeap,
 							   RelationGetNumberOfAttributes(OldHeap));
+
 
 	table_close(OldHeap, NoLock);
 
@@ -1234,9 +1245,7 @@ swap_relation_files(Oid r1, Oid r2, bool target_is_pg_class,
 		relform2->relam == AO_ROW_TABLE_AM_OID || relform2->relam == AO_COLUMN_TABLE_AM_OID)
 		ATAOEntries(relform1, relform2);
 
-	/* Also swap reloptions if we are swaping between heap and AO/AOCO tables. */
-	if ((relform1->relam == HEAP_TABLE_AM_OID && IsAccessMethodAO(relform2->relam)) ||
-		(relform2->relam == HEAP_TABLE_AM_OID && IsAccessMethodAO(relform1->relam)))
+	/* Also swap reloptions */
 	{
 		Datum		val[Natts_pg_class] = {0};
 		bool		null[Natts_pg_class] = {0};
