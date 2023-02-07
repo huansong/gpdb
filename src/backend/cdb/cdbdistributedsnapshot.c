@@ -292,22 +292,14 @@ int
 DistributedSnapshot_Serialize(DistributedSnapshot *ds, char *buf)
 {
 	char	   *p = buf;
+	int 	size1 = sizeof(DistributedSnapshotId) + 3 * sizeof(DistributedTransactionId) + sizeof(int32);
+	int 	size2 = sizeof(DistributedTransactionId) * ds->count;
 
-	memcpy(p, &ds->xminAllDistributedSnapshots, sizeof(DistributedTransactionId));
-	p += sizeof(DistributedTransactionId);
-	memcpy(p, &ds->distribSnapshotId, sizeof(DistributedSnapshotId));
-	p += sizeof(DistributedSnapshotId);
-	memcpy(p, &ds->xmin, sizeof(DistributedTransactionId));
-	p += sizeof(DistributedTransactionId);
-	memcpy(p, &ds->xmax, sizeof(DistributedTransactionId));
-	p += sizeof(DistributedTransactionId);
-	memcpy(p, &ds->count, sizeof(int32));
-	p += sizeof(int32);
+	memcpy(p, &ds->xminAllDistributedSnapshots, size1);
+	p += size1;
 
-	memcpy(p, ds->inProgressXidArray, sizeof(DistributedTransactionId) * ds->count);
-	p += sizeof(DistributedTransactionId) * ds->count;
-
-	Assert((p - buf) == DistributedSnapshot_SerializeSize(ds));
+	memcpy(p, ds->inProgressXidArray, size2);
+	p += size2;
 
 	return (p - buf);
 }
@@ -316,21 +308,14 @@ int
 DistributedSnapshot_Deserialize(const char *buf, DistributedSnapshot *ds)
 {
 	const char *p = buf;
+	int 	size1 = sizeof(DistributedSnapshotId) + 3 * sizeof(DistributedTransactionId) + sizeof(int32);
 
-	memcpy(&ds->xminAllDistributedSnapshots, p, sizeof(DistributedTransactionId));
-	p += sizeof(DistributedTransactionId);
-	memcpy(&ds->distribSnapshotId, p, sizeof(DistributedSnapshotId));
-	p += sizeof(DistributedSnapshotId);
-	memcpy(&ds->xmin, p, sizeof(DistributedTransactionId));
-	p += sizeof(DistributedTransactionId);
-	memcpy(&ds->xmax, p, sizeof(DistributedTransactionId));
-	p += sizeof(DistributedTransactionId);
-	memcpy(&ds->count, p, sizeof(int32));
-	p += sizeof(int32);
+	memcpy(&ds->xminAllDistributedSnapshots, p, size1);
+	p += size1;
 
 	if (ds->count > 0)
 	{
-		int xipsize = sizeof(DistributedTransactionId) * ds->count;
+		int 	size2 = sizeof(DistributedTransactionId) * ds->count;
 
 		if (ds->inProgressXidArray == NULL)
 		{
@@ -342,8 +327,8 @@ DistributedSnapshot_Deserialize(const char *buf, DistributedSnapshot *ds)
 						 errmsg("out of memory")));
 		}
 
-		memcpy(ds->inProgressXidArray, p, xipsize);
-		p += xipsize;
+		memcpy(ds->inProgressXidArray, p, size2);
+		p += size2;
 	}
 
 	Assert((p - buf) == DistributedSnapshot_SerializeSize(ds));
