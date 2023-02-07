@@ -1,0 +1,1 @@
+UPDATE orders SET O_ORDERSTATUS = 'b';

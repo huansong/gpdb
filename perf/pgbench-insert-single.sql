@@ -1,0 +1,10 @@
+INSERT INTO orders values (4, 1, 'a', 1.00, '1990-01-01', 'foo', 'bar', 1, 'none');
+INSERT INTO orders values (4, 1, 'a', 1.00, '1991-01-01', 'foo', 'bar', 1, 'none');
+INSERT INTO orders values (4, 1, 'a', 1.00, '1992-01-01', 'foo', 'bar', 1, 'none');
+INSERT INTO orders values (4, 1, 'a', 1.00, '1993-01-01', 'foo', 'bar', 1, 'none');
+INSERT INTO orders values (4, 1, 'a', 1.00, '1994-01-01', 'foo', 'bar', 1, 'none');
+INSERT INTO orders values (4, 1, 'a', 1.00, '1995-01-01', 'foo', 'bar', 1, 'none');
+INSERT INTO orders values (4, 1, 'a', 1.00, '1996-01-01', 'foo', 'bar', 1, 'none');
+INSERT INTO orders values (4, 1, 'a', 1.00, '1997-01-01', 'foo', 'bar', 1, 'none');
+INSERT INTO orders values (4, 1, 'a', 1.00, '1998-01-01', 'foo', 'bar', 1, 'none');
+INSERT INTO orders values (4, 1, 'a', 1.00, '1999-01-01', 'foo', 'bar', 1, 'none');
