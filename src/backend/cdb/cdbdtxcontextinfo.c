@@ -160,9 +160,11 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 	int			i;
 	int			used;
 	DistributedSnapshot *ds = &dtxContextInfo->distributedSnapshot;
+	int 	size = sizeof(DistributedTransactionId) + sizeof(bool) * 2 + sizeof(int) + sizeof(uint32) * 2;
 
-	memcpy(p, &dtxContextInfo->distributedXid, sizeof(DistributedTransactionId));
-	p += sizeof(DistributedTransactionId);
+	memcpy(p, &dtxContextInfo->distributedXid, size);
+	p += size;
+
 	if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
 	{
 		memcpy(p, &dtxContextInfo->curcid, sizeof(CommandId));
@@ -179,25 +181,10 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 		 dtxContextInfo->distributedXid,
 		 dtxContextInfo->curcid, dtxContextInfo->nestingLevel, dtxContextInfo->segmateSync);
 
-	memcpy(p, &dtxContextInfo->segmateSync, sizeof(uint32));
-	p += sizeof(uint32);
-
-	memcpy(p, &dtxContextInfo->nestingLevel, sizeof(uint32));
-	p += sizeof(uint32);
-
-	memcpy(p, &dtxContextInfo->haveDistributedSnapshot, sizeof(bool));
-	p += sizeof(bool);
-
-	memcpy(p, &dtxContextInfo->cursorContext, sizeof(bool));
-	p += sizeof(bool);
-
 	if (dtxContextInfo->haveDistributedSnapshot)
 	{
 		p += DistributedSnapshot_Serialize(ds, p);
 	}
-
-	memcpy(p, &dtxContextInfo->distributedTxnOptions, sizeof(int));
-	p += sizeof(int);
 
 	used = (p - buffer);
 
@@ -304,13 +291,19 @@ DtxContextInfo_Deserialize(const char *serializedDtxContextInfo,
 	if (serializedDtxContextInfolen > 0)
 	{
 		const char *p = serializedDtxContextInfo;
+		int 	size = sizeof(DistributedTransactionId) + sizeof(bool) * 2 + sizeof(int) + sizeof(uint32) * 2;
 
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
 			 "DtxContextInfo_Deserialize serializedDtxContextInfolen = %d.",
 			 serializedDtxContextInfolen);
 
-		memcpy(&dtxContextInfo->distributedXid, p, sizeof(DistributedTransactionId));
-		p += sizeof(DistributedTransactionId);
+		memcpy(&dtxContextInfo->distributedXid, p, size);
+
+		elog((Debug_print_full_dtm ? LOG : DEBUG3),
+			 "DtxContextInfo_Deserialize distributedXid = "UINT64_FORMAT", curcid %d nestingLevel %d segmateSync %u as %s",
+			 dtxContextInfo->distributedXid,
+			 dtxContextInfo->curcid, dtxContextInfo->nestingLevel,
+			 dtxContextInfo->segmateSync, (Gp_is_writer ? "WRITER" : "READER"));
 
 		if (dtxContextInfo->distributedXid != InvalidDistributedTransactionId)
 		{
@@ -323,22 +316,6 @@ DtxContextInfo_Deserialize(const char *serializedDtxContextInfo,
 				 "DtxContextInfo_Deserialize distributedXid was InvalidDistributedTransactionId");
 		}
 
-		memcpy(&dtxContextInfo->segmateSync, p, sizeof(uint32));
-		p += sizeof(uint32);
-		memcpy(&dtxContextInfo->nestingLevel, p, sizeof(uint32));
-		p += sizeof(uint32);
-		memcpy(&dtxContextInfo->haveDistributedSnapshot, p, sizeof(bool));
-		p += sizeof(bool);
-
-		memcpy(&dtxContextInfo->cursorContext, p, sizeof(bool));
-		p += sizeof(bool);
-
-		elog((Debug_print_full_dtm ? LOG : DEBUG3),
-			 "DtxContextInfo_Deserialize distributedXid = "UINT64_FORMAT", curcid %d nestingLevel %d segmateSync %u as %s",
-			 dtxContextInfo->distributedXid,
-			 dtxContextInfo->curcid, dtxContextInfo->nestingLevel,
-			 dtxContextInfo->segmateSync, (Gp_is_writer ? "WRITER" : "READER"));
-
 		if (dtxContextInfo->haveDistributedSnapshot)
 		{
 			p += DistributedSnapshot_Deserialize(p, ds);
@@ -348,9 +325,6 @@ DtxContextInfo_Deserialize(const char *serializedDtxContextInfo,
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),
 				 "DtxContextInfo_Deserialize no distributed snapshot");
 		}
-
-		memcpy(&dtxContextInfo->distributedTxnOptions, p, sizeof(int));
-		p += sizeof(int);
 
 		if (DEBUG5 >= log_min_messages || Debug_print_full_dtm)
 		{

@@ -16,7 +16,7 @@
 
 #include "utils/snapshot.h"
 
-#define DtxContextInfo_StaticInit {InvalidDistributedTransactionId,false,false,DistributedSnapshot_StaticInit,0,0,0,0}
+#define DtxContextInfo_StaticInit {InvalidDistributedTransactionId,false,false,0,0,0,0,DistributedSnapshot_StaticInit}
 
 typedef struct DtxContextInfo
 {
@@ -24,8 +24,6 @@ typedef struct DtxContextInfo
 	
 	bool							haveDistributedSnapshot;
 	bool							cursorContext;
-	
-	DistributedSnapshot		 		distributedSnapshot;
 
 	int 							distributedTxnOptions;
 
@@ -34,6 +32,8 @@ typedef struct DtxContextInfo
 
 	/* currentCommandId of QD, for debugging only */
 	CommandId				 		curcid;	
+	
+	DistributedSnapshot		 		distributedSnapshot;
 } DtxContextInfo;
 
 extern DtxContextInfo QEDtxContextInfo;	
