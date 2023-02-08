@@ -164,10 +164,6 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 						  Oid *visimaprelid,
 						  Oid *visimapidxid)
 {
-	Relation	pg_appendonly;
-	TupleDesc	tupDesc;
-	ScanKeyData key[1];
-	SysScanDesc scan;
 	HeapTuple	tuple;
 	Form_pg_appendonly	aoForm;
 
@@ -175,17 +171,7 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 	 * Check the pg_appendonly relation to be certain the ao table
 	 * is there.
 	 */
-	pg_appendonly = table_open(AppendOnlyRelationId, AccessShareLock);
-	tupDesc = RelationGetDescr(pg_appendonly);
-
-	ScanKeyInit(&key[0],
-				Anum_pg_appendonly_relid,
-				BTEqualStrategyNumber, F_OIDEQ,
-				ObjectIdGetDatum(relid));
-
-	scan = systable_beginscan(pg_appendonly, AppendOnlyRelidIndexId, true,
-							  appendOnlyMetaDataSnapshot, 1, key);
-	tuple = systable_getnext(scan);
+	tuple = SearchSysCache1(APPENDONLYOID, ObjectIdGetDatum(relid));
 	if (!HeapTupleIsValid(tuple))
 		ereport(ERROR,
 				(errcode(ERRCODE_UNDEFINED_OBJECT),
@@ -209,9 +195,7 @@ GetAppendOnlyEntryAuxOids(Oid relid,
 	if (visimapidxid != NULL)
 		*visimapidxid = aoForm->visimapidxid;
 
-	/* Finish up scan and close pg_appendonly catalog. */
-	systable_endscan(scan);
-	table_close(pg_appendonly, AccessShareLock);
+	ReleaseSysCache(tuple);
 }
 
 void
