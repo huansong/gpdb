@@ -7960,9 +7960,11 @@ TriggerForSpec:
 				}
 			| /* EMPTY */
 				{
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Triggers for statements are not yet supported")));
+					/*
+					 * If ROW/STATEMENT not specified, default to
+					 * STATEMENT, per SQL
+					 */
+					$$ = false;
 				}
 		;
 
@@ -7973,12 +7975,7 @@ TriggerForOptEach:
 
 TriggerForType:
 			ROW										{ $$ = true; }
-			| STATEMENT
-			{
-					ereport(ERROR,
-							(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-							 errmsg("Triggers for statements are not yet supported")));
-			}
+			| STATEMENT								{ $$ = false; }
 		;
 
 TriggerWhen:
