@@ -347,6 +347,8 @@ SELECT aototal('tenk_ao1');
 
 -- gp_fastsequence should reflect bump in lastsequence, even if above
 -- transaction aborted as its tuples is in place updated.
+-- The new gp_fastsequence rows are frozen via hintbits (HEAP_XMIN_FROZEN)
+-- even though they have normal xid.
 SELECT CASE WHEN xmin = 2 THEN 'FrozenXid' ELSE 'NormalXid' END, objmod,
 last_sequence, gp_segment_id from gp_dist_random('gp_fastsequence') WHERE objid
 IN (SELECT segrelid FROM pg_appendonly WHERE relid IN (SELECT oid FROM pg_class
@@ -354,11 +356,11 @@ WHERE relname='tenk_ao1'));
    case    | objmod | last_sequence | gp_segment_id 
 -----------+--------+---------------+---------------
  NormalXid |      0 |             0 |             0
- FrozenXid |      1 |         16998 |             0
+ NormalXid |      1 |         16998 |             0
  NormalXid |      0 |             0 |             2
- FrozenXid |      1 |         16395 |             2
+ NormalXid |      1 |         16395 |             2
  NormalXid |      0 |             0 |             1
- FrozenXid |      1 |         16996 |             1
+ NormalXid |      1 |         16996 |             1
 (6 rows)
 
 -- commit
@@ -1210,6 +1212,8 @@ DROP TABLE IF EXISTS ao_selection;
 CREATE TABLE ao_selection (a INT, b INT) WITH (appendonly=true);
 INSERT INTO ao_selection VALUES (generate_series(1,100000), generate_series(1,10000));
 -- Validates insert is using single segfile to perform the insert to gp_fastsequence.
+-- The new gp_fastsequence rows are frozen via hintbits (HEAP_XMIN_FROZEN)
+-- even though they have normal xid.
 SELECT CASE WHEN xmin = 2 THEN 'FrozenXid' ELSE 'NormalXid' END, objmod,
 last_sequence, gp_segment_id from gp_dist_random('gp_fastsequence') WHERE objid
 IN (SELECT segrelid FROM pg_appendonly WHERE relid IN (SELECT oid FROM pg_class
@@ -1217,11 +1221,11 @@ WHERE relname='ao_selection'));
    case    | objmod | last_sequence | gp_segment_id 
 -----------+--------+---------------+---------------
  NormalXid |      0 |             0 |             2
- FrozenXid |      1 |         33300 |             2
+ NormalXid |      1 |         33300 |             2
  NormalXid |      0 |             0 |             0
- FrozenXid |      1 |         33500 |             0
+ NormalXid |      1 |         33500 |             0
  NormalXid |      0 |             0 |             1
- FrozenXid |      1 |         33400 |             1
+ NormalXid |      1 |         33400 |             1
 (6 rows)
 
 -- Following insert without concurrency is also using same segfile as above
@@ -1233,11 +1237,11 @@ WHERE relname='ao_selection'));
    case    | objmod | last_sequence | gp_segment_id 
 -----------+--------+---------------+---------------
  NormalXid |      0 |             0 |             0
- FrozenXid |      1 |         67000 |             0
+ NormalXid |      1 |         67000 |             0
  NormalXid |      0 |             0 |             1
- FrozenXid |      1 |         66800 |             1
+ NormalXid |      1 |         66800 |             1
  NormalXid |      0 |             0 |             2
- FrozenXid |      1 |         66600 |             2
+ NormalXid |      1 |         66600 |             2
 (6 rows)
 
 -- Check compression and distribution

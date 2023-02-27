@@ -180,6 +180,8 @@ begin;
 insert into addcol6 select i,i from generate_series(1,10)i;
 -- abort the first insert, still should advance gp_fastsequence for this
 -- relation.
+-- The new gp_fastsequence rows are frozen via hintbits (HEAP_XMIN_FROZEN)
+-- even though they have normal xid.
 SELECT CASE WHEN xmin = 2 THEN 'FrozenXid' ELSE 'NormalXid' END, objmod,
 last_sequence, gp_segment_id from gp_dist_random('gp_fastsequence') WHERE objid
 IN (SELECT segrelid FROM pg_appendonly WHERE relid IN (SELECT oid FROM pg_class

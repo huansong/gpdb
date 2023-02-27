@@ -23,6 +23,8 @@
 #include "catalog/pg_subscription.h"
 #include "catalog/pg_subscription_rel.h"
 #include "executor/executor.h"
+#include "storage/bufmgr.h"
+#include "utils/faultinjector.h"
 #include "utils/rel.h"
 
 #include "catalog/gp_fastsequence.h"
@@ -333,16 +335,32 @@ CatalogTupleDelete(Relation heapRel, ItemPointer tid)
  * Greenplum: this interface is used to insert tuples into gp_fastsequence
  * and aoseg relations during an appendoptimized (row as well as column)
  * insert transaction.
+ * To prevent any inconsistency between the heap and index inserts, we don't
+ * immediately mark the heap row frozen after we inserted it. But we use
+ * regular CatalogTupleInsert, and then inplace update it to frozen.
  */
 void
 CatalogTupleInsertFrozen(Relation heapRel, HeapTuple tup)
 {
-	CatalogIndexState indstate;
+	CatalogTupleInsert(heapRel, tup);
 
-	indstate = CatalogOpenIndexes(heapRel);
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+								   "insert_frozen_before_inplace_update",
+								   DDLNotSpecified,
+								   "", //databaseName
+								   RelationGetRelationName(heapRel));
+#endif
 
-	frozen_heap_insert(heapRel, tup);
+	/* mark tuple frozen and update inplace */
+	HeapTupleHeaderSetXminFrozen(tup->t_data);
+	heap_inplace_update_internal(heapRel, tup, false /* data_only */);
 
-	CatalogIndexInsert(indstate, tup);
-	CatalogCloseIndexes(indstate);
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+								   "insert_frozen_after_inplace_update",
+								   DDLNotSpecified,
+								   "", //databaseName
+								   RelationGetRelationName(heapRel));
+#endif
 }

@@ -5940,13 +5940,27 @@ heap_abort_speculative(Relation relation, ItemPointer tid)
  * The tuple cannot change size, and therefore it's reasonable to assume
  * that its null bitmap (if any) doesn't change either.  So we just
  * overwrite the data portion of the tuple without touching the null
- * bitmap or any of the header fields.
+ * bitmap or any of the header fields. 
+ *
+ * GPDB: by default we update only the data portion which aligns with
+ * upstream's heap_inplace_update. In case of where header update is needed,
+ * use heap_inplace_update_internal directly and pass data_only=false.
  *
  * tuple is an in-memory tuple structure containing the data to be written
  * over the target tuple.  Also, tuple->t_self identifies the target tuple.
  */
 void
 heap_inplace_update(Relation relation, HeapTuple tuple)
+{
+	heap_inplace_update_internal(relation, tuple, true);
+}
+
+/*
+ * GPDB: internal function to do inplace udpate with an additional option 
+ * to update the tuple header portion as well as the data portion.
+ */
+void
+heap_inplace_update_internal(Relation relation, HeapTuple tuple, bool data_only)
 {
 	Buffer		buffer;
 	Page		page;
@@ -5955,6 +5969,7 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 	HeapTupleHeader htup;
 	uint32		oldlen;
 	uint32		newlen;
+	uint32 		copyoff;
 
 	/*
 	 * For now, parallel operations are required to be strictly read-only.
@@ -5980,16 +5995,22 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 
 	htup = (HeapTupleHeader) PageGetItem(page, lp);
 
-	oldlen = ItemIdGetLength(lp) - htup->t_hoff;
-	newlen = tuple->t_len - tuple->t_data->t_hoff;
+	if (data_only)
+		copyoff = tuple->t_data->t_hoff; 
+	else
+		copyoff = 0;
+
+	oldlen = ItemIdGetLength(lp) - copyoff;
+	newlen = tuple->t_len - copyoff;
+
 	if (oldlen != newlen || htup->t_hoff != tuple->t_data->t_hoff)
 		elog(ERROR, "wrong tuple length");
 
 	/* NO EREPORT(ERROR) from here till changes are logged */
 	START_CRIT_SECTION();
 
-	memcpy((char *) htup + htup->t_hoff,
-		   (char *) tuple->t_data + tuple->t_data->t_hoff,
+	memcpy((char *) htup + copyoff,
+		   (char *) tuple->t_data + copyoff,
 		   newlen);
 
 	MarkBufferDirty(buffer);
@@ -6006,7 +6027,7 @@ heap_inplace_update(Relation relation, HeapTuple tuple)
 		XLogRegisterData((char *) &xlrec, SizeOfHeapInplace);
 
 		XLogRegisterBuffer(0, buffer, REGBUF_STANDARD);
-		XLogRegisterBufData(0, (char *) htup + htup->t_hoff, newlen);
+		XLogRegisterBufData(0, (char *) htup + copyoff, newlen);
 
 		/* inplace updates aren't decoded atm, don't log the origin */
 
@@ -9075,6 +9096,7 @@ heap_xlog_inplace(XLogReaderState *record)
 	HeapTupleHeader htup;
 	uint32		oldlen;
 	Size		newlen;
+	uint32 		copyoff;
 
 	if (XLogReadBufferForRedo(record, 0, &buffer) == BLK_NEEDS_REDO)
 	{
@@ -9091,11 +9113,20 @@ heap_xlog_inplace(XLogReaderState *record)
 
 		htup = (HeapTupleHeader) PageGetItem(page, lp);
 
-		oldlen = ItemIdGetLength(lp) - htup->t_hoff;
+		/* first see if we updated both tuple header and data */
+		copyoff = 0;
+		oldlen = ItemIdGetLength(lp);
+
+		if (oldlen != newlen)
+		{
+			/* we must have updated tuple data only */
+			copyoff = htup->t_hoff;
+			oldlen -= copyoff;
+		}
 		if (oldlen != newlen)
 			elog(PANIC, "wrong tuple length");
 
-		memcpy((char *) htup + htup->t_hoff, newtup, newlen);
+		memcpy((char *) htup + copyoff, newtup, newlen);
 
 		PageSetLSN(page, lsn);
 		MarkBufferDirty(buffer);
