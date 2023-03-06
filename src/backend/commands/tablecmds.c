@@ -7714,7 +7714,7 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 * each tuple or for each varblock, so that this optimization can be
 		 * applied on similar lines as heap_getattr.
 		 */
-		if (!rawEnt->missingMode || RelationIsAoRows(rel))
+		if (!rawEnt->missingMode)
 			tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
 	}
 
@@ -7814,8 +7814,8 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		if (!defval && RelationIsAppendOptimized(rel))
 		{
 			defval = (Expr *) makeNullConst(typeOid, -1, collOid);
-			if (RelationIsAoRows(rel))
-				tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
+			/*if (RelationIsAoRows(rel))
+				tab->rewrite |= AT_REWRITE_DEFAULT_VAL;*/
 		}
 
 		if (defval)

@@ -907,7 +907,10 @@ static Datum memtuple_getattr_by_alignment(MemTuple mtup, MemTupleBinding *pbind
 	short *null_saves = (use_null_saves_aligned ? colbind->null_saves_aligned : colbind->null_saves);
 	Assert(null_saves);
 
-	ret = fetchatt(TupleDescAttr(pbind->tupdesc, attnum), memtuple_get_attr_data_ptr(start, attrbind, null_saves, nullp));
+	if (memtuple_get_size(mtup) <= (memtuple_get_attr_data_ptr(start, attrbind, null_saves, nullp) - start))
+		ret = (Datum) 0;
+	else
+		ret = fetchatt(TupleDescAttr(pbind->tupdesc, attnum), memtuple_get_attr_data_ptr(start, attrbind, null_saves, nullp));
 
 	return ret;
 }
@@ -937,7 +940,19 @@ static void memtuple_get_values(MemTuple mtup, MemTupleBinding *pbind, Datum *da
 {
 	int i;
 	for(i=0; i<pbind->tupdesc->natts; ++i)
+	{
 		datum[i] = memtuple_getattr_by_alignment(mtup, pbind, i+1, &isnull[i], use_null_saves_aligned);
+		if (datum[i] == (Datum) 0)
+			break;
+	}
+	/*
+         * If tuple doesn't have all the atts indicated by tupleDesc, read the
+         * rest as nulls or missing values as appropriate.
+         */
+	for (; i<pbind->tupdesc->natts; ++i)
+	{
+		datum[i] = getmissingattr(pbind->tupdesc, i+1, &isnull[i]);
+	}
 }
 
 void memtuple_deform(MemTuple mtup, MemTupleBinding *pbind, Datum *datum, bool *isnull)
