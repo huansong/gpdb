@@ -15,6 +15,9 @@ CREATE SCHEMA adst;
 
 SET search_path TO adst,public;
 
+-- to get function get_tablespace_version_directory_name()
+CREATE EXTENSION gp_check_functions;
+
 -- start_ignore
 CREATE LANGUAGE plpython3u;
 -- end_ignore
