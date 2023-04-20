@@ -281,7 +281,10 @@ FaultInjector_InjectFaultIfSet_out_of_line(
 		   0 == strcmp("auto_vac_worker_after_report_activity", faultName) ||
 		   0 == strcmp("auto_vac_worker_abort", faultName) ||
 		   0 == strcmp("analyze_after_hold_lock", faultName) ||
-		   0 == strcmp("analyze_finished_one_relation", faultName))))
+		   0 == strcmp("analyze_finished_one_relation", faultName))) ||
+		(IsDtxRecoveryProcess() &&
+		 !(0 == strcmp("before_orphaned_check", faultName) ||
+		   0 == strcmp("after_orphaned_check", faultName))))
 		return FaultInjectorTypeNotSpecified;
 
 	/*
