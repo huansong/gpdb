@@ -78,7 +78,7 @@ cdbdisp_makeResult(struct CdbDispatchResults *meleeResults,
 	dispatchResult->ackPGNotifies = NULL;
 
 #ifdef FAULT_INJECTOR
-	if (SIMPLE_FAULT_INJECTOR("make_dispatch_result_error") == FaultInjectorTypeSkip)
+	if (!IsBackgroundWorker && SIMPLE_FAULT_INJECTOR("make_dispatch_result_error") == FaultInjectorTypeSkip)
 	{
 		/*
 		 * Inject a fault to simulate the createPQExpBuffer return NULL (maybe because of
