@@ -1,0 +1,4 @@
+select * from gp_toolkit.gp_check_orphaned_files;
+ gp_segment_id | tablespace | filename 
+---------------+------------+----------
+(0 rows)
