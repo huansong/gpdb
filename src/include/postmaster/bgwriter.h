@@ -35,7 +35,7 @@ extern void CheckpointWriteDelay(int flags, double progress);
 
 extern bool ForwardSyncRequest(const FileTag *ftag, SyncRequestType type);
 
-extern void AbsorbSyncRequests(void);
+extern void AbsorbSyncRequests(int loc);
 
 extern Size CheckpointerShmemSize(void);
 extern void CheckpointerShmemInit(void);

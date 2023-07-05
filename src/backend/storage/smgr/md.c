@@ -399,6 +399,7 @@ mdunlinkfork(RelFileNodeBackend rnode, ForkNumber forkNum, bool isRedo)
 
 		/* Register request to unlink first segment later */
 		register_unlink_segment(rnode, forkNum, 0 /* first seg */ );
+		elog(LOG, "HFTEST: registered unlink request for %d: %m", rnode.node.relNode);
 	}
 
 	/*
@@ -1459,6 +1460,7 @@ mdunlinkfiletag(const FileTag *ftag, char *path)
 	p = relpathperm(ftag->rnode, MAIN_FORKNUM);
 	strlcpy(path, p, MAXPGPATH);
 	pfree(p);
+	//elog(INFO, "HFTEST: to unlink file %s", path);
 
 	/* Try to unlink the file. */
 	return unlink(path);

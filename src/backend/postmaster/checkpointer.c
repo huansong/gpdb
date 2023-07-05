@@ -356,7 +356,7 @@ CheckpointerMain(void)
 		/*
 		 * Process any requests or signals received recently.
 		 */
-		AbsorbSyncRequests();
+		AbsorbSyncRequests(1);
 
 		if (got_SIGHUP)
 		{
@@ -703,7 +703,7 @@ CheckpointWriteDelay(int flags, double progress)
 			UpdateSharedMemoryConfig();
 		}
 
-		AbsorbSyncRequests();
+		AbsorbSyncRequests(2);
 		absorb_counter = WRITES_PER_ABSORB;
 
 		CheckArchiveTimeout();
@@ -728,7 +728,7 @@ CheckpointWriteDelay(int flags, double progress)
 		 * operations even when we don't sleep, to prevent overflow of the
 		 * fsync request queue.
 		 */
-		AbsorbSyncRequests();
+		AbsorbSyncRequests(3);
 		absorb_counter = WRITES_PER_ABSORB;
 	}
 }
@@ -1301,7 +1301,7 @@ CompactCheckpointerRequestQueue(void)
  * non-checkpointer processes, do nothing if not checkpointer.
  */
 void
-AbsorbSyncRequests(void)
+AbsorbSyncRequests(int loc)
 {
 	CheckpointerRequest *requests = NULL;
 	CheckpointerRequest *request;
@@ -1335,6 +1335,7 @@ AbsorbSyncRequests(void)
 	{
 		requests = (CheckpointerRequest *) palloc(n * sizeof(CheckpointerRequest));
 		memcpy(requests, CheckpointerShmem->requests, n * sizeof(CheckpointerRequest));
+		elog(LOG, "AbsorbFsyncRequests(callsite %d) gets %d requests", loc, n);
 	}
 
 	START_CRIT_SECTION();

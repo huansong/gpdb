@@ -177,7 +177,7 @@ SyncPreCheckpoint(void)
 	 * unlink requests forwarded before the checkpoint began will be processed
 	 * in the current checkpoint.
 	 */
-	AbsorbSyncRequests();
+	AbsorbSyncRequests(4);
 
 	/*
 	 * Any unlink requests arriving after this point will be assigned the next
@@ -229,7 +229,12 @@ SyncPostCheckpoint(void)
 				ereport(WARNING,
 						(errcode_for_file_access(),
 						 errmsg("could not remove file \"%s\": %m", path)));
+			else
+				ereport(WARNING,
+						(errcode_for_file_access(),
+						 errmsg("had ENOENT removing file \"%s\": %m", path)));
 		}
+		elog(LOG, "HFTEST: removed file from pending unlink list: %s", path);
 
 		/* And remove the list entry */
 		pendingUnlinks = list_delete_first(pendingUnlinks);
@@ -243,7 +248,7 @@ SyncPostCheckpoint(void)
 		 */
 		if (--absorb_counter <= 0)
 		{
-			AbsorbSyncRequests();
+			AbsorbSyncRequests(5);
 			absorb_counter = UNLINKS_PER_ABSORB;
 		}
 	}
@@ -287,7 +292,7 @@ ProcessSyncRequests(void)
 	 * queued an fsync request before clearing the buffer's dirtybit, so we
 	 * are safe as long as we do an Absorb after completing BufferSync().
 	 */
-	AbsorbSyncRequests();
+	AbsorbSyncRequests(6);
 
 	/*
 	 * To avoid excess fsync'ing (in the worst case, maybe a never-terminating
@@ -397,7 +402,7 @@ ProcessSyncRequests(void)
 			 */
 			if (--absorb_counter <= 0)
 			{
-				AbsorbSyncRequests();
+				AbsorbSyncRequests(7);
 				absorb_counter = FSYNCS_PER_ABSORB;
 			}
 
@@ -460,7 +465,7 @@ ProcessSyncRequests(void)
 				 * Absorb incoming requests and check to see if a cancel
 				 * arrived for this relation fork.
 				 */
-				AbsorbSyncRequests();
+				AbsorbSyncRequests(8);
 				absorb_counter = FSYNCS_PER_ABSORB; /* might as well... */
 			}					/* end retry loop */
 		}
@@ -552,6 +557,7 @@ RememberSyncRequest(const FileTag *ftag, SyncRequestType type)
 		pendingUnlinks = lappend(pendingUnlinks, entry);
 
 		MemoryContextSwitchTo(oldcxt);
+		elog(LOG, "RememberSyncRequest() processed a request");
 	}
 	else
 	{

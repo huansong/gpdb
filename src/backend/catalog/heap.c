@@ -500,6 +500,7 @@ heap_create(const char *relname,
 				break;
 		}
 
+		elog(LOG, "HFTEST: creating relation %s with relfilenode %d", relname, rel->rd_node.relNode);
 		/*
 		 * AO tables don't use the buffer manager, better to not keep the
 		 * smgr open for it.
