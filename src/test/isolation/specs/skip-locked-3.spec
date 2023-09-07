@@ -16,17 +16,17 @@ teardown
 }
 
 session s1
-setup		{ BEGIN; }
+setup		{ SET optimizer=off; BEGIN; }
 step s1a	{ SELECT * FROM queue ORDER BY id FOR UPDATE LIMIT 1; }
 step s1b	{ COMMIT; }
 
 session s2
-setup		{ BEGIN; }
+setup		{ SET optimizer=off; BEGIN; }
 step s2a	{ SELECT * FROM queue ORDER BY id FOR UPDATE LIMIT 1; }
 step s2b	{ COMMIT; }
 
 session s3
-setup		{ BEGIN; }
+setup		{ SET optimizer=off; BEGIN; }
 step s3a	{ SELECT * FROM queue ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1; }
 step s3b	{ COMMIT; }
 

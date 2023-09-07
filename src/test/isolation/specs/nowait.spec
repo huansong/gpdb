@@ -15,11 +15,11 @@ teardown
 }
 
 session s1
-setup		{ BEGIN; }
+setup		{ SET optimizer=off; BEGIN; }
 step s1a	{ SELECT * FROM foo FOR UPDATE NOWAIT; }
 step s1b	{ COMMIT; }
 
 session s2
-setup		{ BEGIN; }
+setup		{ SET optimizer=off; BEGIN; }
 step s2a	{ SELECT * FROM foo FOR UPDATE NOWAIT; }
 step s2b	{ COMMIT; }

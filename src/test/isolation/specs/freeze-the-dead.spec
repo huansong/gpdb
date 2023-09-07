@@ -29,12 +29,14 @@ step s1_selectone	{
 step s1_selectall	{ SELECT * FROM tab_freeze ORDER BY name, id; }
 
 session s2
+setup { SET optimizer=off; }
 step s2_begin		{ BEGIN; }
 step s2_key_share	{ SELECT id FROM tab_freeze WHERE id = 3 FOR KEY SHARE; }
 step s2_commit		{ COMMIT; }
 step s2_vacuum		{ VACUUM FREEZE tab_freeze; }
 
 session s3
+setup { SET optimizer=off; }
 step s3_begin		{ BEGIN; }
 step s3_key_share	{ SELECT id FROM tab_freeze WHERE id = 3 FOR KEY SHARE; }
 step s3_commit		{ COMMIT; }

@@ -21,6 +21,7 @@ teardown
 }
 
 session s1
+setup 		{ SET optimizer=off; }
 step s1b	{ BEGIN ISOLATION LEVEL REPEATABLE READ; }
 step s1s	{ SELECT * FROM foo; }	# obtain snapshot
 step s1l	{ SELECT * FROM foo FOR KEY SHARE; } # obtain lock

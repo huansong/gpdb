@@ -16,19 +16,19 @@ teardown
 }
 
 session s1
-setup			{ BEGIN; }
+setup			{ SET optimizer=off; BEGIN; }
 step s1lock		{ SELECT * FROM justthis FOR SHARE; }
 step s1svpt		{ SAVEPOINT foo; }
 step s1lock2	{ SELECT * FROM justthis FOR SHARE; }
 step s1c		{ COMMIT; }
 
 session s2
-setup			{ BEGIN; }
+setup			{ SET optimizer=off; BEGIN; }
 step s2lock		{ SELECT * FROM justthis FOR SHARE; }	# ensure it's a multi
 step s2c		{ COMMIT; }
 
 session s3
-setup			{ BEGIN; }
+setup			{ SET optimizer=off; BEGIN; }
 step s3lock		{ SELECT * FROM justthis FOR UPDATE; }
 step s3c		{ COMMIT; }
 

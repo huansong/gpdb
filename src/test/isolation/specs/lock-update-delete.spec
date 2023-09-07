@@ -32,6 +32,7 @@ teardown
 }
 
 session s1
+setup { SET optimizer=off; }
 # obtain lock on the tuple, traversing its update chain
 step s1l	{ SELECT * FROM foo WHERE pg_advisory_xact_lock(0) IS NOT NULL AND key = 1 FOR KEY SHARE; }
 

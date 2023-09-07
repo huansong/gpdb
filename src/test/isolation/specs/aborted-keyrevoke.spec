@@ -18,7 +18,7 @@ teardown
 }
 
 session s1
-setup		{ BEGIN; }
+setup		{ SET optimizer=off; BEGIN; }
 step s1s	{ SAVEPOINT f; }
 step s1u	{ UPDATE foo SET key = 2; }	# obtain KEY REVOKE
 step s1r	{ ROLLBACK TO f; } # lose KEY REVOKE
@@ -26,7 +26,7 @@ step s1l	{ SELECT * FROM foo FOR KEY SHARE; }
 step s1c	{ COMMIT; }
 
 session s2
-setup		{ BEGIN; }
+setup		{ SET optimizer=off; BEGIN; }
 step s2l	{ SELECT * FROM foo FOR KEY SHARE; }
 step s2c	{ COMMIT; }
 

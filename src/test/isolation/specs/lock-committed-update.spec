@@ -24,6 +24,7 @@ step s1c    { COMMIT; }
 teardown      { SELECT pg_advisory_unlock_all(); }
 
 session s2
+setup { SET optimizer=off; }
 step s2b1    { BEGIN ISOLATION LEVEL READ COMMITTED; }
 step s2b2    { BEGIN ISOLATION LEVEL REPEATABLE READ; }
 step s2b3    { BEGIN ISOLATION LEVEL SERIALIZABLE; }

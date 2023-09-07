@@ -22,6 +22,8 @@ step s1b { ALTER TABLE b ADD CONSTRAINT bfk FOREIGN KEY (a_id) REFERENCES a (i) 
 step s1c { COMMIT; }
 
 session s2
+# GPDB: have to run w/o ORCA otherwise it would upgrade lock for SELECT FOR
+setup { SET optimizer=off; }
 step s2a { BEGIN; }
 step s2b { SELECT * FROM a WHERE i = 1 LIMIT 1 FOR UPDATE; }
 step s2c { SELECT * FROM b WHERE a_id = 3 LIMIT 1 FOR UPDATE; }

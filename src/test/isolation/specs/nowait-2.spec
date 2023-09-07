@@ -15,12 +15,12 @@ teardown
 }
 
 session s1
-setup		{ BEGIN; }
+setup		{ SET optimizer=false; BEGIN; }
 step s1a	{ SELECT * FROM foo FOR SHARE NOWAIT; }
 step s1b	{ COMMIT; }
 
 session s2
-setup		{ BEGIN; }
+setup		{ SET optimizer=false; BEGIN; }
 step s2a	{ SELECT * FROM foo FOR SHARE NOWAIT; }
 step s2b	{ SELECT * FROM foo FOR UPDATE NOWAIT; }
 step s2c	{ COMMIT; }

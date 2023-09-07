@@ -15,7 +15,7 @@ teardown
 }
 
 session s1
-setup		{ BEGIN; }
+setup		{ SET optimizer=off; BEGIN; }
 step s1a	{ SELECT * FROM foo WHERE pg_advisory_lock(0) IS NOT NULL FOR UPDATE NOWAIT; }
 step s1b	{ COMMIT; }
 
