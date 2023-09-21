@@ -26,6 +26,7 @@ begin
 			return false;
 		end if;
 		perform pg_sleep(0.1);
+                perform pg_stat_clear_snapshot();
 		retries := retries - 1;
 	end loop;
 end;
