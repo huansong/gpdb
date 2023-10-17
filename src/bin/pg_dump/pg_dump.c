@@ -1760,7 +1760,7 @@ selectDumpableNamespace(NamespaceInfo *nsinfo, Archive *fout)
 	}
 	else if (strncmp(nsinfo->dobj.name, "pg_", 3) == 0 ||
 			 strcmp(nsinfo->dobj.name, "information_schema") == 0 ||
-			strcmp(nsinfo->dobj.name, "gp_toolkit") == 0)
+			(!dopt->binary_upgrade && strcmp(nsinfo->dobj.name, "gp_toolkit") == 0))
 	{
 		/* Other system schemas don't get dumped */
 		nsinfo->dobj.dump_contains = nsinfo->dobj.dump = DUMP_COMPONENT_NONE;
