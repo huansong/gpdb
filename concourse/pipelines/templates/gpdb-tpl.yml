@@ -1192,8 +1192,8 @@ jobs:
       file: gpdb_src/concourse/tasks/compile_gpdb_with_filedump.yml
       image: gpdb7-[[ os_type ]]-test
       params:
-        MAKE_TEST_COMMAND: -k PGOPTIONS='-c optimizer=off -c jit=off'
-          BUILD_TYPE=((rc-build-type)) -C ../filedump_src installcheck
+        MAKE_TEST_COMMAND: -k
+          BUILD_TYPE=((rc-build-type)) installcheck
         TEST_OS: [[ test_os ]]
 
 - name: icw_extensions_gpcloud_[[ os_type ]]

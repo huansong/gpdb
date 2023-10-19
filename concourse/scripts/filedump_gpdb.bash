@@ -29,8 +29,8 @@ function gen_env(){
 		    exit 1
 		}
 		source /usr/local/greenplum-db-devel/greenplum_path.sh
-		cd "\${1}/gpdb_src"
-		source gpAux/gpdemo/gpdemo-env.sh
+		source gpdb_src/gpAux/gpdemo/gpdemo-env.sh
+		cd "\${1}/filedump_src"
 		PG_TEST_EXTRA="kerberos ssl" make -s ${MAKE_TEST_COMMAND}
 	EOF
 
@@ -39,6 +39,9 @@ function gen_env(){
 
 function setup_gpadmin_user() {
     ./gpdb_src/concourse/scripts/setup_gpadmin_user.bash "$TEST_OS"
+}
+
+function setup_filedump_src() {
     chmod a+w filedump_src
     make -C filedump_src
     make -C filedump_src install
@@ -66,13 +69,10 @@ function _main() {
 
     time install_and_configure_gpdb
     time setup_gpadmin_user
+    time setup_filedump_src
     time make_cluster
     time gen_env
     time run_test
-
-    if [ "${TEST_BINARY_SWAP}" == "true" ]; then
-        time ./gpdb_src/concourse/scripts/test_binary_swap_gpdb.bash
-    fi
 
     if [ "${DUMP_DB}" == "true" ]; then
         chmod 777 sqldump

@@ -18,4 +18,3 @@ params:
   TEST_OS: ""
   CONFIGURE_FLAGS: ""
   WITH_MIRRORS:
-
