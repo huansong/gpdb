@@ -7238,8 +7238,8 @@ setupColumnOnlyRewrite(List **wqueue,
 	bool columnar_rewrite = true;
 
 	/*
-	* ADD COLUMN, ALTER COLUMN TYPE or ALTER COLUMN SET ENCODING for CO can be optimized
-	* only if there's no other subcommand (except DROP COLUMN) being performed.
+	* ADD COLUMN, ALTER COLUMN TYPE, ALTER COLUMN SET ENCODING or ADD constraint commands for 
+	* CO can be optimize only if there's no other subcommand (except DROP COLUMN) being performed.
 	*/
 
 	/* we should be here for these commands only */
@@ -7253,6 +7253,7 @@ setupColumnOnlyRewrite(List **wqueue,
 					i != AT_PASS_ADD_COL && 
 					i != AT_PASS_ALTER_TYPE && 
 					i != AT_PASS_DROP && 
+					i != AT_PASS_ADD_CONSTR &&
 					tab->subcmds[i])
 		{
 			columnar_rewrite = false;
