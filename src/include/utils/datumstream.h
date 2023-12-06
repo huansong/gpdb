@@ -120,6 +120,8 @@ typedef struct DatumStreamRead
 
 	DatumStreamBlockRead blockRead;
 
+	Datum 		missingval;
+
 	/*-------------------------------------------------------------------------
 	 * Less commonly used fields.
 	 */
@@ -184,6 +186,8 @@ typedef struct DatumStreamFetchDescData
 
 	int64		scanAfterFileOffset;
 	int64		scanLastRowNum;
+
+	Datum 		missingval;
 
 	AOFetchBlockMetadata currentBlock;
 

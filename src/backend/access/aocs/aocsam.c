@@ -23,6 +23,7 @@
 #include "access/heapam.h"
 #include "access/hio.h"
 #include "access/reloptions.h"
+#include "access/xact.h"
 #include "catalog/catalog.h"
 #include "catalog/gp_fastsequence.h"
 #include "catalog/index.h"
@@ -592,6 +593,9 @@ aocs_beginscan_internal(Relation relation,
 
 	/* relationTupleDesc will be inited by the slot when needed */
 	scan->columnScanInfo.relationTupleDesc = NULL;
+
+	/* get the attnums info */
+	scan->columnScanInfo.attnum_to_rownum = GetAttnumToLastrownumMapping(RelationGetRelid(relation), RelationGetNumberOfAttributes(relation));
 
 	/*
 	 * We get an array of booleans to indicate which columns are needed. But
@@ -1267,11 +1271,26 @@ ReadNext:
 				Assert(err > 0);
 			}
 
+			if (AO_ATTR_VAL_IS_MISSING(scan->columnScanInfo.ds[attno]->getBlockInfo.firstRow,
+															attno,
+															curseginfo->segno,
+															scan->columnScanInfo.attnum_to_rownum))
+			{
+				if (scan->columnScanInfo.ds[attno]->missingval == (Datum)0)
+					scan->columnScanInfo.ds[attno]->missingval = getmissingattr(slot->tts_tupleDescriptor, attno + 1, &null[attno]);
+			}
+			else
+				scan->columnScanInfo.ds[attno]->missingval = (Datum) 0;
+
 			/*
 			 * Get the column's datum right here since the data structures
 			 * should still be hot in CPU data cache memory.
+			 * The datum can come from either the block itself, or pg_attribute.attmissingval
 			 */
-			datumstreamread_get(scan->columnScanInfo.ds[attno], &d[attno], &null[attno]);
+			if (scan->columnScanInfo.ds[attno]->missingval == (Datum)0)
+				datumstreamread_get(scan->columnScanInfo.ds[attno], &d[attno], &null[attno]);
+			else
+				d[attno] = scan->columnScanInfo.ds[attno]->missingval;
 
 			if (rowNum == INT64CONST(-1) &&
 				scan->columnScanInfo.ds[attno]->blockFirstRowNum != INT64CONST(-1))
@@ -1823,6 +1842,10 @@ aocs_fetch_init(Relation relation,
 	aocsFetchDesc->segmentFileName[0] = '\0';
 	aocsFetchDesc->basepath = basePath;
 
+	/* lastrownums info */
+	aocsFetchDesc->attnum_to_rownum = GetAttnumToLastrownumMapping(
+		RelationGetRelid(relation),RelationGetNumberOfAttributes(relation));
+
 	Assert(proj);
 
     bool checksum = true;
@@ -2002,7 +2025,28 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 					break;
 				}
 
-				fetchFromCurrentBlock(aocsFetchDesc, rowNum, slot, colno);
+				/* check if value is missing. */
+				if (AO_ATTR_VAL_IS_MISSING(rowNum, colno, segmentFileNum, aocsFetchDesc->attnum_to_rownum))
+				{
+					if (datumStreamFetchDesc->missingval == (Datum)0)
+						datumStreamFetchDesc->missingval = getmissingattr(slot->tts_tupleDescriptor,
+									   				colno + 1,
+									   				&slot->tts_isnull[colno]);
+				}
+				else
+				{
+					datumStreamFetchDesc->missingval = (Datum)0;
+				}
+
+				/*
+				 * Fetch the row from either pg_attribute.attmissingval or from the segment
+				 * file directly. Note that missingval==0 can mean either it is not missing
+				 * or it is a NULL, both however lead to the same result.
+				 */
+				if (datumStreamFetchDesc->missingval != (Datum)0)
+					slot->tts_values[colno] = datumStreamFetchDesc->missingval;
+				else
+					fetchFromCurrentBlock(aocsFetchDesc, rowNum, slot, colno);
 				continue;
 			}
 
@@ -2106,6 +2150,25 @@ aocs_fetch(AOCSFetchDesc aocsFetchDesc,
 		positionFirstBlockOfRange(datumStreamFetchDesc);
 
 		positionLimitToEndOfRange(datumStreamFetchDesc);
+
+		/* First check if the value is missing. */
+		if (AO_ATTR_VAL_IS_MISSING(rowNum, colno, segmentFileNum, aocsFetchDesc->attnum_to_rownum))
+		{
+			if (datumStreamFetchDesc->missingval == (Datum)0)
+				datumStreamFetchDesc->missingval = getmissingattr(slot->tts_tupleDescriptor,
+											colno + 1,
+											&slot->tts_isnull[colno]);
+		}
+		else
+		{
+			datumStreamFetchDesc->missingval = (Datum)0;
+		}
+
+		if (datumStreamFetchDesc->missingval != (Datum)0)
+		{
+			slot->tts_values[colno] = datumStreamFetchDesc->missingval;
+			continue;
+		}
 
 		if (!scanToFetchValue(aocsFetchDesc, rowNum, slot, colno))
 		{
@@ -2403,7 +2466,7 @@ aocs_writecol_init(Relation rel, List *newvals, AOCSWriteColumnOperation op)
 	foreach(lc, newvals)
 	{
 		NewColumnValue *newval = lfirst(lc);
-		if (op == newval->op)
+		if (op == newval->op || (op == AOCSADDCOLUMN && newval->op == AOCSADDCOLUMN_MISSINGMODE))
 			desc->newcolvals = lappend(desc->newcolvals, newval);
 	}
 
@@ -2433,7 +2496,7 @@ aocs_writecol_init(Relation rel, List *newvals, AOCSWriteColumnOperation op)
 		int blocksize = -1;
 
 		initStringInfo(&titleBuf);
-		if (op==AOCSADDCOLUMN)
+		if (op == AOCSADDCOLUMN)
 			appendStringInfo(&titleBuf, "ALTER TABLE ADD COLUMN new segfile");
 		else
 			appendStringInfo(&titleBuf, "ALTER TABLE REWRITE COLUMN new segfile");
@@ -2871,6 +2934,20 @@ aocs_writecol_writesegfiles(
 								 (int) con->contype);
 					}
 				}
+				/*
+				 * Missing value optimization: If we are in missing mode, we
+				 * can simply write NULL here instead of the actual value.
+				 * XXX: Could we simply write only the block header in the future?
+				 */
+				foreach (l, idesc->newcolvals)
+				{
+					newval = lfirst(l);
+					if (newval->op == AOCSADDCOLUMN_MISSINGMODE)
+					{
+						values[newval->attnum-1] = (Datum)0;
+						isnull[newval->attnum-1] = true;
+					}
+				}
 				aocs_writecol_insert_datum(idesc,
 										   values,
 										   isnull);
@@ -3201,7 +3278,7 @@ aocs_writecol_reindex(Oid relid, List *newvals)
 		foreach (lc, newvals)
 		{
 			newval = lfirst(lc);
-			if (newval->op == AOCSADDCOLUMN)
+			if (newval->op == AOCSADDCOLUMN || newval->op == AOCSADDCOLUMN_MISSINGMODE)
 				continue;
 			AttrNumber rewrittenattnum = newval->attnum;
 			for (int i = 0; i < indnatts; ++i)
@@ -3351,14 +3428,15 @@ aocs_writecol_rewrite(Oid relid, List *newvals, TupleDesc oldDesc)
 		ExecDropSingleTupleTableSlot(newslot);
 	}
 
-	/* Update the filenum and any encoding options in pg_attribute_encoding */
+	/* Update the filenum, lastrownums, any encoding options in pg_attribute_encoding */
 	foreach(l, newvals)
 	{
 		Datum newattoptions = (Datum)0;
 		NewColumnValue *ex = lfirst(l);
 
-		if (ex->op == AOCSADDCOLUMN)
+		if (ex->op == AOCSADDCOLUMN || ex->op == AOCSADDCOLUMN_MISSINGMODE)
 			continue;
+
 		newfilenum = GetFilenumForRewriteAttribute(RelationGetRelid(rel), ex->attnum);
 		/* get the attoptions string to be stored in pg_attribute_encoding */
 		if (ex->new_encoding)
@@ -3370,7 +3448,20 @@ aocs_writecol_rewrite(Oid relid, List *newvals, TupleDesc oldDesc)
 											true,
 											false);
 		}
-		update_attribute_encoding_entry(RelationGetRelid(rel), ex->attnum, newfilenum, 0/*lastrownums*/, newattoptions);
+
+		update_attribute_encoding_entry(RelationGetRelid(rel), 
+									ex->attnum,
+									newfilenum,
+									0,
+									newattoptions);
+		/*
+		 * lastrownums is not useful after rewriting the column, so clear them.
+		 * As we just update the catalog we need to increment command counter.
+		 * XXX: change update_attribute_encoding_entry so we can nullify
+		 * lastrownums in one call, or use something like NullableDatum.
+		 */
+		CommandCounterIncrement();
+		ClearAttributeEncodingLastrownumsByAttnum(RelationGetRelid(rel), ex->attnum);
 	}
 
 	/* Re-index the ones that contain the columns we just rewrote */

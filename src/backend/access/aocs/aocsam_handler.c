@@ -26,6 +26,7 @@
 #include "catalog/heap.h"
 #include "catalog/index.h"
 #include "catalog/pg_appendonly.h"
+#include "catalog/pg_attribute_encoding.h"
 #include "catalog/storage.h"
 #include "catalog/storage_xlog.h"
 #include "cdb/cdbaocsam.h"
@@ -1322,6 +1323,9 @@ aoco_relation_nontransactional_truncate(Relation rel)
 	heap_truncate_one_relid(aoseg_relid);
 	heap_truncate_one_relid(aoblkdir_relid);
 	heap_truncate_one_relid(aovisimap_relid);
+
+	/* Also clear pg_attribute_encoding.lastrownums */
+	ClearAttributeEncodingLastrownums(RelationGetRelid(rel));
 }
 
 static void

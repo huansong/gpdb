@@ -142,6 +142,9 @@ typedef struct AOCSFetchDescData
 	AppendOnlyVisimap visibilityMap;
 
 	Oid segrelid;
+
+	/* attnum to rownum mapping, used in reading missing column value */
+	int64 *attnum_to_rownum;
 } AOCSFetchDescData;
 
 typedef AOCSFetchDescData *AOCSFetchDesc;
@@ -231,6 +234,8 @@ typedef struct AOCSScanDescData
 		AttrNumber		   *proj_atts;
 		AttrNumber			num_proj_atts;
 
+		/* attnum to rownum mapping, used in reading missing column value */
+		int64 			   *attnum_to_rownum;
 		struct DatumStreamRead **ds;
 	} columnScanInfo;
 
@@ -346,7 +351,8 @@ typedef AOCSHeaderScanDescData *AOCSHeaderScanDesc;
 typedef enum AOCSWriteColumnOperation
 {
 	AOCSADDCOLUMN,  /* ADD COLUMN */
-	AOCSREWRITECOLUMN /* ALTER COLUMN TYPE */
+	AOCSREWRITECOLUMN, /* ALTER COLUMN TYPE */
+	AOCSADDCOLUMN_MISSINGMODE /* ADD COLUMN (missing mode) */
 } AOCSWriteColumnOperation;
 
 typedef struct AOCSWriteColumnDescData
