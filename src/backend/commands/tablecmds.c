@@ -7267,6 +7267,7 @@ setupColumnOnlyRewrite(List **wqueue,
 			{
 				if (ATtype == AT_AddColumn)
 					childtab->rewrite |= AT_REWRITE_NEW_COLUMNS_ONLY;
+					//childtab->rewrite = childtab->rewrite;
 				else if (ATtype == AT_AlterColumnType || ATtype == AT_SetColumnEncoding)
 					childtab->rewrite |= AT_REWRITE_REWRITE_COLUMNS_ONLY;
 				else
@@ -9222,6 +9223,61 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 				(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
 				 errmsg("cannot drop column \"%s\" because it is part of the partition key of relation \"%s\"",
 						colName, RelationGetRelationName(rel))));
+
+	/*
+	 * GPDB: although rare, but if it's the last complete column of an AOCO table, 
+	 * dropping it means losing row number information in the data files. So conduct
+	 * an ad-hoc column rewrite (for creating a new complete column) in that case.
+	 */
+	if (RelationStorageIsAoCols(rel))
+	{
+		AttrNumber 	natts = RelationGetNumberOfAttributes(rel);
+		AttrNumber 	nexistcols = 0;
+		AttrNumber 	ncompletecols = 0;
+		AttrNumber 	attnum_to_rewrite = 0;
+		bool 		*column_not_complete = ExistValidLastrownums(RelationGetRelid(rel), natts);
+
+		if (!column_not_complete[attnum - 1])
+		{
+			for (int i = 0; i < natts; i++)
+			{
+				HeapTuple atttup;
+				atttup = SearchSysCacheAttNum(RelationGetRelid(rel), i + 1);
+				if (atttup)
+				{
+					nexistcols++;
+					if (!column_not_complete[i])
+						ncompletecols++;
+					else if (attnum_to_rewrite == 0)
+						attnum_to_rewrite = i + 1; /* XXX: get the column with the smallest data type? */
+					ReleaseSysCache(atttup);
+				}
+			}
+
+			Assert(ncompletecols > 0 && nexistcols > 0);
+
+			if (ncompletecols == 1 && nexistcols > 1)
+			{
+				if (Gp_role == GP_ROLE_DISPATCH)
+					ereport(WARNING,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("dropping the last complete column \"%s\" of the AOCO table incurs a column rewrite,"
+								" of the incomplete column %d. This DROP COLUMN command might be slower than usual",
+									colName, attnum_to_rewrite)));
+
+				NewColumnValue *newval = (NewColumnValue *) palloc0(sizeof(NewColumnValue));
+				Node       *transform = (Node *) makeVar(1, attnum_to_rewrite,
+                                                                                 targetatt->atttypid, targetatt->atttypmod,
+                                                                                 targetatt->attcollation,
+                                                                                 0);
+				newval->attnum = attnum_to_rewrite;
+				newval->expr = (Expr *) transform;
+				newval->is_generated = false;
+				newval->op = AOCSREWRITECOLUMN;
+				table_relation_rewrite_columns(rel, lappend(NIL, newval), CreateTupleDescCopyConstr(RelationGetDescr(rel)));
+			}
+		}
+	}
 
 	ReleaseSysCache(tuple);
 

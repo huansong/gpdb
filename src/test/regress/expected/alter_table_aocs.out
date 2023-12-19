@@ -839,19 +839,19 @@ SELECT * FROM gp_toolkit.__gp_aocsseg('aocs_addcol_abort') ORDER BY segment_id, 
           0 |     0 |          1 |            128 |        5 |  64 |               64 |        1 |             3 |     1
           0 |     1 |          1 |            129 |        5 |  64 |               64 |        2 |             3 |     1
           0 |     0 |          2 |            256 |        5 |  64 |               64 |        1 |             3 |     1
-          0 |     1 |          2 |            257 |        5 |  48 |               48 |        2 |             3 |     1
+          0 |     1 |          2 |            257 |        5 |   0 |                0 |        2 |             3 |     1
           1 |     0 |          0 |              0 |        1 |  48 |               48 |        1 |             3 |     1
           1 |     1 |          0 |              1 |        1 |  48 |               48 |        2 |             3 |     1
           1 |     0 |          1 |            128 |        1 |  48 |               48 |        1 |             3 |     1
           1 |     1 |          1 |            129 |        1 |  48 |               48 |        2 |             3 |     1
           1 |     0 |          2 |            256 |        1 |  48 |               48 |        1 |             3 |     1
-          1 |     1 |          2 |            257 |        1 |  48 |               48 |        2 |             3 |     1
+          1 |     1 |          2 |            257 |        1 |   0 |                0 |        2 |             3 |     1
           2 |     0 |          0 |              0 |        4 |  56 |               56 |        1 |             3 |     1
           2 |     1 |          0 |              1 |        4 |  56 |               56 |        2 |             3 |     1
           2 |     0 |          1 |            128 |        4 |  56 |               56 |        1 |             3 |     1
           2 |     1 |          1 |            129 |        4 |  56 |               56 |        2 |             3 |     1
           2 |     0 |          2 |            256 |        4 |  56 |               56 |        1 |             3 |     1
-          2 |     1 |          2 |            257 |        4 |  48 |               48 |        2 |             3 |     1
+          2 |     1 |          2 |            257 |        4 |   0 |                0 |        2 |             3 |     1
 (18 rows)
 
 SELECT * FROM aocs_addcol_abort;
@@ -973,12 +973,9 @@ select gp_segment_id, (gp_toolkit.__gp_aoblkdir('t_addcol_aoco')).* from gp_dist
  gp_segment_id | tupleid | segno | columngroup_no | entry_no | first_row_no | file_offset | row_count 
 ---------------+---------+-------+----------------+----------+--------------+-------------+-----------
              0 | (0,1)   |     1 |              0 |        0 |            1 |           0 |        10
-             0 | (0,2)   |     1 |              1 |        0 |            1 |           0 |        10
              1 | (0,1)   |     1 |              0 |        0 |            1 |           0 |        10
-             1 | (0,2)   |     1 |              1 |        0 |            1 |           0 |        10
              2 | (0,1)   |     1 |              0 |        0 |            1 |           0 |        10
-             2 | (0,2)   |     1 |              1 |        0 |            1 |           0 |        10
-(6 rows)
+(3 rows)
 
 -- pg_attribute_encoding shows expected lastrownums
 execute checkattributeencoding('t_addcol_aoco');
@@ -1532,4 +1529,71 @@ execute checkattributeencoding('t_addcol_aoco_p2');
       2 |       2 |             | {compresstype=none,blocksize=32768,compresslevel=0}
       3 |       3 | {0,100}     | {compresstype=none,blocksize=32768,compresslevel=0}
 (3 rows)
+
+--
+-- drop column
+--
+create table t_addcol_aoco2(a int) using ao_column;
+create index t_addcol_aoco2_i on t_addcol_aoco2(a);
+insert into t_addcol_aoco2 select * from generate_series(1,10);
+alter table t_addcol_aoco2 add column dropcol1 int default 1;
+alter table t_addcol_aoco2 add column dropcol2 int default 1;
+alter table t_addcol_aoco2 add column dropcol3 int default 1;
+select count(*), sum(dropcol1), sum(dropcol2) from t_addcol_aoco2;
+ count | sum | sum 
+-------+-----+-----
+    10 |  10 |  10
+(1 row)
+
+-- drop an incomplete column
+alter table t_addcol_aoco2 drop column dropcol1;
+select sum(dropcol1) from t_addcol_aoco2;
+ERROR:  column "dropcol1" does not exist
+LINE 1: select sum(dropcol1) from t_addcol_aoco2;
+                   ^
+HINT:  Perhaps you meant to reference the column "t_addcol_aoco2.dropcol2" or the column "t_addcol_aoco2.dropcol3".
+select count(*), sum(dropcol2) from t_addcol_aoco2;
+ count | sum 
+-------+-----
+    10 |  10
+(1 row)
+
+-- drop the only complete column, one of the incomplete column will be rewritten
+alter table t_addcol_aoco2 drop column a;
+WARNING:  dropping the last complete column "a" of the AOCO table incurs a column rewrite, of the incomplete column 3. This DROP COLUMN command might be slower than usual
+execute checkattributeencoding('t_addcol_aoco2');
+ attnum | filenum | lastrownums |                     attoptions                      
+--------+---------+-------------+-----------------------------------------------------
+      1 |       1 |             | {compresstype=none,blocksize=32768,compresslevel=0}
+      2 |       2 | {0,100}     | {compresstype=none,blocksize=32768,compresslevel=0}
+      3 |    1603 |             | {compresstype=none,blocksize=32768,compresslevel=0}
+      4 |       4 | {0,100}     | {compresstype=none,blocksize=32768,compresslevel=0}
+(4 rows)
+
+select a from t_addcol_aoco2;
+ERROR:  column "a" does not exist
+LINE 1: select a from t_addcol_aoco2;
+               ^
+select count(*), sum(dropcol2) from t_addcol_aoco2;
+ count | sum 
+-------+-----
+    10 |  10
+(1 row)
+
+-- drop, add and alter column done together
+alter table t_addcol_aoco2 drop column dropcol3, add column b int, alter column dropcol2 type text;
+select * from t_addcol_aoco2;
+ dropcol2 | b 
+----------+---
+ 1        |  
+ 1        |  
+ 1        |  
+ 1        |  
+ 1        |  
+ 1        |  
+ 1        |  
+ 1        |  
+ 1        |  
+ 1        |  
+(10 rows)
 

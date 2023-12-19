@@ -145,6 +145,7 @@ typedef struct AOCSFetchDescData
 
 	/* attnum to rownum mapping, used in reading missing column value */
 	int64 *attnum_to_rownum;
+	AttrNumber 		complete_attnum;
 } AOCSFetchDescData;
 
 typedef AOCSFetchDescData *AOCSFetchDesc;
@@ -234,6 +235,7 @@ typedef struct AOCSScanDescData
 		AttrNumber		   *proj_atts;
 		AttrNumber			num_proj_atts;
 
+		AttrNumber			complete_attnum;
 		/* attnum to rownum mapping, used in reading missing column value */
 		int64 			   *attnum_to_rownum;
 		struct DatumStreamRead **ds;

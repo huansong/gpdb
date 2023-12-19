@@ -737,3 +737,27 @@ select sum(a), sum(b), sum(c) from t_addcol_aoco_part;
 execute checkattributeencoding('t_addcol_aoco');
 execute checkattributeencoding('t_addcol_aoco_p1');
 execute checkattributeencoding('t_addcol_aoco_p2');
+
+--
+-- drop column
+--
+create table t_addcol_aoco2(a int) using ao_column;
+create index t_addcol_aoco2_i on t_addcol_aoco2(a);
+insert into t_addcol_aoco2 select * from generate_series(1,10);
+alter table t_addcol_aoco2 add column dropcol1 int default 1;
+alter table t_addcol_aoco2 add column dropcol2 int default 1;
+alter table t_addcol_aoco2 add column dropcol3 int default 1;
+select count(*), sum(dropcol1), sum(dropcol2) from t_addcol_aoco2;
+-- drop an incomplete column
+alter table t_addcol_aoco2 drop column dropcol1;
+select sum(dropcol1) from t_addcol_aoco2;
+select count(*), sum(dropcol2) from t_addcol_aoco2;
+-- drop the only complete column, one of the incomplete column will be rewritten
+alter table t_addcol_aoco2 drop column a;
+execute checkattributeencoding('t_addcol_aoco2');
+select a from t_addcol_aoco2;
+select count(*), sum(dropcol2) from t_addcol_aoco2;
+-- drop, add and alter column done together
+alter table t_addcol_aoco2 drop column dropcol3, add column b int, alter column dropcol2 type text;
+select * from t_addcol_aoco2;
+
