@@ -25,6 +25,7 @@
 #include "storage/procarray.h"
 
 #include "access/xact.h"
+#include "cdb/cdbgang.h" /* DisconnectAndDestroyAllGangs */
 #include "cdb/cdbvars.h"
 #include "executor/spi.h"
 #include "postmaster/postmaster.h"
@@ -370,11 +371,18 @@ buildWaitGraph(GddCtx *ctx)
 	{
 		if (connected)
 			SPI_finish();
+		DisconnectAndDestroyAllGangs(false);
 		PG_RE_THROW();
 	}
 	PG_END_TRY();
 
 	SPI_finish();
+	/*
+	 * Clean up all gang of the GDD, or they will exist all the time, which may influence
+	 * the work of other utility function like `gp_toolkit.__gp_check_orphaned_files_func`(
+	 * requires that no client session running on segments).
+	 */
+	DisconnectAndDestroyAllGangs(false);
 	/* Make sure we are in gddContext */
 	MemoryContextSwitchTo(gddContext);
 }
