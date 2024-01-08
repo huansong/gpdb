@@ -367,6 +367,57 @@ ClearAttributeEncodingLastrownums(Oid attrelid)
 	heap_close(encrel, RowExclusiveLock);
 }
 
+/*
+ * Clear the lastrownum field (i.e. write NULL) for one of the 
+ * pg_attribute_encoding entries of the given relation.
+ */
+void
+ClearAttributeEncodingLastrownumsByAttnum(Oid attrelid, int attnum)
+{
+	Relation	encrel;
+	ScanKeyData 	skey;
+	SysScanDesc 	scan;
+	HeapTuple	oldtup;
+	HeapTuple	newtup;
+	Datum	   	values[Natts_pg_attribute_encoding];
+	bool	    	nulls[Natts_pg_attribute_encoding];
+	bool		repl[Natts_pg_attribute_encoding];
+
+	encrel = heap_open(AttributeEncodingRelationId, RowExclusiveLock);
+
+	ScanKeyInit(&skey,
+				Anum_pg_attribute_encoding_attrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(attrelid));
+	scan = systable_beginscan(encrel, AttributeEncodingAttrelidIndexId, true,
+							  NULL, 1, &skey);
+	while (HeapTupleIsValid(oldtup = systable_getnext(scan)))
+	{
+		Form_pg_attribute_encoding tupform = (Form_pg_attribute_encoding) GETSTRUCT(oldtup);
+
+		if (tupform->attnum != attnum)
+			continue;
+
+		MemSet(values, 0, sizeof(values));
+		MemSet(nulls, false, sizeof(nulls));
+		MemSet(repl, false, sizeof(repl));
+
+		heap_deform_tuple(oldtup, RelationGetDescr(encrel), values, nulls);
+
+		repl[Anum_pg_attribute_encoding_lastrownums - 1] = true;
+		nulls[Anum_pg_attribute_encoding_lastrownums - 1] = true;
+
+		newtup = heap_modify_tuple(oldtup, RelationGetDescr(encrel), values, nulls, repl);
+
+		CatalogTupleUpdate(encrel, &oldtup->t_self, newtup);
+		heap_freetuple(newtup);
+	}
+
+	systable_endscan(scan);
+
+	heap_close(encrel, RowExclusiveLock);
+}
+
 void
 UpdateAttributeEncodings(Oid relid, List *new_attr_encodings)
 {
