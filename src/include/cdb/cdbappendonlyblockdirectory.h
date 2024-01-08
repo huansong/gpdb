@@ -139,6 +139,8 @@ typedef struct AppendOnlyBlockDirectory
 	ScanKey scanKeys;
 	StrategyNumber *strategyNumbers;
 
+	/* the complete column to use instead of any missing column */
+	AttrNumber complete_colno;
 }	AppendOnlyBlockDirectory;
 
 
@@ -221,6 +223,9 @@ extern int64 AOBlkDirScan_GetRowNum(
 extern bool AppendOnlyBlockDirectory_CoversTuple(
 	AppendOnlyBlockDirectory		*blockDirectory,
 	AOTupleId 						*aoTupleId);
+extern bool blkdir_entry_exists(AppendOnlyBlockDirectory *blockDirectory,
+	AOTupleId 				*aoTupleId,
+	int 					columnGroupNo);
 extern void AppendOnlyBlockDirectory_Init_forInsert(
 	AppendOnlyBlockDirectory *blockDirectory,
 	Snapshot appendOnlyMetaDataSnapshot,
@@ -287,7 +292,6 @@ extern void AppendOnlyBlockDirectory_InsertPlaceholder(AppendOnlyBlockDirectory 
 												  int64 firstRowNum,
 												  int64 fileOffset,
 												  int columnGroupNo);
-
 /*
  * AppendOnlyBlockDirectory_UniqueCheck
  *

@@ -248,7 +248,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -273,7 +273,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t1' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t1' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -300,7 +300,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -325,7 +325,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d1' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d1' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -352,7 +352,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'50' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'76' +
  
 (1 row)
 
@@ -377,7 +377,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -402,7 +402,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d1' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d1' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -429,7 +429,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -454,7 +454,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d1' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d1' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -483,7 +483,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'51' +
  
 (1 row)
 
@@ -508,7 +508,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t3' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t3' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'51' +
  
 (1 row)
 
@@ -537,7 +537,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'51' +
  
 (1 row)
 
@@ -562,7 +562,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'51' +
  
 (1 row)
 
@@ -591,7 +591,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'51' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'77' +
  
 (1 row)
 
@@ -616,7 +616,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'13' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'26' +
  
 (1 row)
 
@@ -641,7 +641,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t4' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t4' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'51' +
  
 (1 row)
 
@@ -670,9 +670,9 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'skip', ''
 ALTER TABLE alter_attach ATTACH PARTITION alter_attach_sr DEFAULT;
 SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', dbid)
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
-                                                                                                                  gp_inject_fault                                                                                                                  
----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'75' +
+                                                                                                                  gp_inject_fault                                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'114' +
  
 (1 row)
 
@@ -697,7 +697,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t3' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t3' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -722,7 +722,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t4' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t4' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -747,7 +747,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -777,7 +777,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                    gp_inject_fault                                                                                                                   
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'101' extra arg:'0' fault injection state:'triggered'  num times hit:'100' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'101' extra arg:'0' fault injection state:'completed'  num times hit:'101' +
  
 (1 row)
 
@@ -801,7 +801,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                           gp_inject_fault                                                                                                                           
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_exchange_t5' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_exchange_t5' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -825,7 +825,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t3' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t3' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -849,7 +849,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t4' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_t4' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -873,7 +873,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -902,7 +902,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                  
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'51' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'77' +
  
 (1 row)
 
@@ -926,7 +926,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                           gp_inject_fault                                                                                                                           
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_exchange_t6' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_exchange_t6' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'51' +
  
 (1 row)
 
@@ -950,7 +950,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                          gp_inject_fault                                                                                                                          
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'13' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_attach_d2' start occurrence:'1' end occurrence:'-1' extra arg:'0' fault injection state:'triggered'  num times hit:'26' +
  
 (1 row)
 
@@ -989,7 +989,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -1015,7 +1015,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                           gp_inject_fault                                                                                                                           
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'create_partof_d1' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'create_partof_d1' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -1043,7 +1043,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -1069,7 +1069,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                           gp_inject_fault                                                                                                                           
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'create_partof_d1' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'create_partof_d1' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -1102,7 +1102,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'13' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'26' +
  
 (1 row)
 
@@ -1166,7 +1166,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'13' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'26' +
  
 (1 row)
 
@@ -1192,7 +1192,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                           gp_inject_fault                                                                                                                           
 --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'create_partof_t3' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'13' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'create_partof_t3' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'26' +
  
 (1 row)
 
@@ -1230,7 +1230,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -1255,7 +1255,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                            gp_inject_fault                                                                                                                            
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_add_1_prt_d1' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_add_1_prt_d1' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -1312,7 +1312,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'50' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'76' +
  
 (1 row)
 
@@ -1337,7 +1337,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                                     gp_inject_fault                                                                                                                                    
 ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_add_subpart_1_prt_d_j_2_prt_2' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_add_subpart_1_prt_d_j_2_prt_2' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -1362,7 +1362,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                                      gp_inject_fault                                                                                                                                     
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_add_subpart_1_prt_d_j_2_prt_d_k' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'25' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_add_subpart_1_prt_d_j_2_prt_d_k' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'38' +
  
 (1 row)
 
@@ -1394,7 +1394,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                   gp_inject_fault                                                                                                                   
 ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'13' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'26' +
  
 (1 row)
 
@@ -1419,7 +1419,7 @@ SELECT gp_inject_fault('AppendOnlyStorageRead_ReadNextBlock_success', 'status', 
     FROM gp_segment_configuration WHERE content = 1 AND role = 'p';
                                                                                                                                      gp_inject_fault                                                                                                                                     
 -----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_add_subpart_1_prt_d_j_2_prt_d_k' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'13' +
+ Success: fault name:'AppendOnlyStorageRead_ReadNextBlock_success' fault type:'skip' ddl statement:'' database name:'' table name:'alter_add_subpart_1_prt_d_j_2_prt_d_k' start occurrence:'1' end occurrence:'100' extra arg:'0' fault injection state:'triggered'  num times hit:'26' +
  
 (1 row)
 

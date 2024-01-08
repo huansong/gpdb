@@ -15,6 +15,7 @@
 #include "postgres.h"
 
 #include "access/xact.h"
+#include "cdb/cdbaocsam.h"
 #include "cdb/cdbappendonlyblockdirectory.h"
 #include "catalog/aoblkdir.h"
 #include "catalog/aocatalog.h"
@@ -59,9 +60,6 @@ insert_new_entry(AppendOnlyBlockDirectory *blockDirectory,
 				 int64 fileOffset,
 				 int64 rowCount);
 static void clear_minipage(MinipagePerColumnGroup *minipagePerColumnGroup);
-static bool blkdir_entry_exists(AppendOnlyBlockDirectory *blockDirectory,
-								AOTupleId *aoTupleId,
-								int columnGroupNo);
 
 static int findFileSegInfo(AppendOnlyBlockDirectory *blockDirectory,
 						   int segmentFileNum);
@@ -137,6 +135,8 @@ init_internal(AppendOnlyBlockDirectory *blockDirectory)
 	init_scankeys(idxTupleDesc, numScanKeys,
 				  blockDirectory->scanKeys,
 				  blockDirectory->strategyNumbers);
+
+	blockDirectory->complete_colno = -1;
 
 	/* Initialize the last minipage */
 	blockDirectory->minipages =
@@ -991,8 +991,9 @@ AppendOnlyBlockDirectory_GetEntryForPartialScan(AppendOnlyBlockDirectory *blockD
  * Note about AOCO tables:
  * For AOCO tables, there are multiple block directory entries for each tid.
  * However, it is currently sufficient to check the block directory entry for
- * just one of these columns. We do so for the 1st non-dropped column. Note that
- * if we write a placeholder row for the 1st non-dropped column i, there is a
+ * just one of these columns. We do so for the "complete column" which is
+ * picked using the same logic as regular table scan. Note that if we write a 
+ * placeholder row for the complete column being picked, there is a
  * guarantee that if there is a conflict on the placeholder row, the covering
  * block directory entry will be based on the same column i (as columnar DDL
  * changes need exclusive locks and placeholder rows can't be seen after tx end)
@@ -1006,7 +1007,6 @@ AppendOnlyBlockDirectory_CoversTuple(
 									 AOTupleId *aoTupleId)
 {
 	Relation	aoRel = blockDirectory->aoRel;
-	int 		firstNonDroppedColumn = -1;
 
 	Assert(RelationIsValid(aoRel));
 
@@ -1014,18 +1014,19 @@ AppendOnlyBlockDirectory_CoversTuple(
 		return blkdir_entry_exists(blockDirectory, aoTupleId, 0);
 	else
 	{
-		for(int i = 0; i < aoRel->rd_att->natts; i++)
-		{
-			if (!aoRel->rd_att->attrs[i].attisdropped) {
-				firstNonDroppedColumn = i;
-				break;
-			}
-		}
-		Assert(firstNonDroppedColumn != -1);
+		/* first time init */
+		if (blockDirectory->complete_colno == -1)
+			blockDirectory->complete_colno = column_to_scan((AOCSFileSegInfo**)blockDirectory->segmentFileInfo,
+												blockDirectory->totalSegfiles,
+												aoRel->rd_att->natts,
+												aoRel,
+												NULL /*proj_atts*/,
+												0 /*num_proj_atts*/);
+		Assert(blockDirectory->complete_colno >= 0);
 
 		return blkdir_entry_exists(blockDirectory,
 								   aoTupleId,
-								   firstNonDroppedColumn);
+								   blockDirectory->complete_colno);
 	}
 }
 
@@ -1039,7 +1040,7 @@ AppendOnlyBlockDirectory_CoversTuple(
  * SNAPSHOT_SELF or SNAPSHOT_ANY also would mean that we shouldn't consult the
  * cache, in order to see the latest updates.
  */
-static bool
+bool
 blkdir_entry_exists(AppendOnlyBlockDirectory *blockDirectory,
 					AOTupleId *aoTupleId,
 					int columnGroupNo)
@@ -1066,7 +1067,8 @@ blkdir_entry_exists(AppendOnlyBlockDirectory *blockDirectory,
 	 * Check the cached minipage first to see if the row number exists. If not,
 	 * proceed to perform a sysscan of the block directory.
 	 */
-	if (IsMVCCSnapshot(blockDirectory->appendOnlyMetaDataSnapshot) &&
+	if (blockDirectory->appendOnlyMetaDataSnapshot && 
+		IsMVCCSnapshot(blockDirectory->appendOnlyMetaDataSnapshot) &&
 		blockDirectory->currentSegmentFileNum == segmentFileNum)
 	{
 		MinipagePerColumnGroup *minipageInfo =

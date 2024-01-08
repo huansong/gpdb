@@ -2015,17 +2015,26 @@ aoco_index_build_range_scan(Relation heapRelation,
 			{
 				/*
 				 * We were unable to find a block directory row
-				 * encompassing/preceding the start block. This represents an
-				 * edge case where the start block of the range maps to a hole
+				 * encompassing/preceding the start block. This represents two
+				 * possibilities:
+				 *
+				 * (1) an edge case where the start block of the range maps to a hole
 				 * at the very beginning of the segfile (and before the first
 				 * minipage entry of the first minipage corresponding to this
 				 * segfile).
-				 *
 				 * Do nothing in this case. The scan will start anyway from the
 				 * beginning of the segfile (offset = 0), i.e. from the first row
 				 * present in the segfile (see BufferedReadInit()).
 				 * This will ensure that we don't skip the other possibly extant
 				 * blocks in the range.
+				 *
+				 * (2) the column does not physically contain the block because the
+				 * column was added after the block was written. In this case, the block
+				 * is missing in this column but it might exist in other columns.
+				 * Do nothing in this case either, because later when we do the scan
+				 * we will always read a complete column before the missing column.
+				 * We should've already positioned correctly for the complete column,
+				 * which means we won't read extra rows from the missing column either.
 				 */
 				break;
 			}

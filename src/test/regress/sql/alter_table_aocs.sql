@@ -737,3 +737,84 @@ select sum(a), sum(b), sum(c) from t_addcol_aoco_part;
 execute checkattributeencoding('t_addcol_aoco');
 execute checkattributeencoding('t_addcol_aoco_p1');
 execute checkattributeencoding('t_addcol_aoco_p2');
+
+--
+-- drop column
+--
+create table t_addcol_aoco2(a int) using ao_column;
+create index t_addcol_aoco2_i on t_addcol_aoco2(a);
+insert into t_addcol_aoco2 select * from generate_series(1,10);
+alter table t_addcol_aoco2 add column dropcol1 int default 1;
+alter table t_addcol_aoco2 add column dropcol2 int default 1;
+alter table t_addcol_aoco2 add column dropcol3 int default 1;
+select count(*), sum(dropcol1), sum(dropcol2) from t_addcol_aoco2;
+-- drop an incomplete column
+alter table t_addcol_aoco2 drop column dropcol1;
+select sum(dropcol1) from t_addcol_aoco2;
+select count(*), sum(dropcol2) from t_addcol_aoco2;
+-- drop the only complete column, one of the incomplete column will be rewritten
+alter table t_addcol_aoco2 drop column a;
+execute checkattributeencoding('t_addcol_aoco2');
+select a from t_addcol_aoco2;
+select count(*), sum(dropcol2) from t_addcol_aoco2;
+-- drop, add and alter column done together
+alter table t_addcol_aoco2 drop column dropcol3, add column b int, alter column dropcol2 type text;
+insert into t_addcol_aoco2 values('aaa', 1);
+select * from t_addcol_aoco2;
+-- drop the last complete column which is also the last column in the table,
+-- and that is fine.
+alter table t_addcol_aoco2 drop column b;
+alter table t_addcol_aoco2 drop column dropcol2;
+select * from t_addcol_aoco2;
+
+--
+-- alter the last complete column
+--
+create table t_addcol_aoco3(a int, b int) using ao_column;
+insert into t_addcol_aoco3 select i,i+1 from generate_series(1,10)i;
+alter table t_addcol_aoco3 add column c int default 1;
+insert into t_addcol_aoco3 select i,i+1 from generate_series(1,10)i;
+alter table t_addcol_aoco3 drop column a;
+-- b should be the last complete column remaining. Alter column should work
+alter table t_addcol_aoco3 alter column b type text;
+-- alter the missing column should also work
+alter table t_addcol_aoco3 alter column c type text;
+-- add two more missing columns
+alter table t_addcol_aoco3 add column d int default 2, add column e int default 3;
+-- alter e, to make it complete
+alter table t_addcol_aoco3 alter column e type text;
+-- drop b and c, so d becomes the first non-dropped column which is also a non-complete column
+alter table t_addcol_aoco3 drop column b, drop column c;
+-- eof is as expected
+select * from gp_toolkit.__gp_aocsseg('t_addcol_aoco3') where column_num = 3 or column_num = 4;
+-- data is good
+select * from t_addcol_aoco3;
+
+--
+-- index scan on the added column
+--
+create table t_addcol_aoco4(a int) using ao_column;
+insert into t_addcol_aoco4 select * from generate_series(1,10);
+alter table t_addcol_aoco4 add column b int default 10;
+create index t_addcol_aoco4_i on t_addcol_aoco4(b);
+-- the new column doesn't have block directory entry
+select gp_segment_id, (gp_toolkit.__gp_aoblkdir('t_addcol_aoco4')).* from gp_dist_random('gp_id');
+-- indexscan works
+set optimizer = false;
+set enable_seqscan=off;
+explain select * from t_addcol_aoco4 where b = 10;
+select * from t_addcol_aoco4 where b = 10;
+select * from t_addcol_aoco4 where b = 0;
+reset optimizer;
+reset enable_seqscan;
+
+--
+-- block directory covering test
+--
+create table t_addcol_aoco5(a int unique) using ao_column;
+insert into t_addcol_aoco5 select * from generate_series(1,10);
+alter table t_addcol_aoco5 add column b int default 1, add column c int default 1;
+-- unique check is working
+insert into t_addcol_aoco5 values(1); -- bad
+insert into t_addcol_aoco5 values(11); -- good
+select * from t_addcol_aoco5;

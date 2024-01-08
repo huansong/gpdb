@@ -905,6 +905,60 @@ GetAttnumToLastrownumMapping(Oid relid, int natts)
 }
 
 /*
+ * Check if an attribute has valid lastrownums field in pg_attribute_encoding.
+ * Used for checking if the attribute is complete or not.
+ * 
+ * Return a palloc'ed array based on the number of attributes
+ */
+bool*
+ExistValidLastrownums(Oid relid, int natts)
+{
+	bool 		*lastrownums_exist = (bool*) palloc0(natts * sizeof(bool));
+	Relation    	encrel;
+	SysScanDesc 	scan;
+	ScanKeyData 	skey[1];
+	HeapTuple	tup;
+	bool 		isnull;
+
+	Assert(OidIsValid(relid));
+
+	encrel = heap_open(AttributeEncodingRelationId, AccessShareLock);
+
+	ScanKeyInit(&skey[0],
+				Anum_pg_attribute_encoding_attrelid,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(relid));
+	scan = systable_beginscan(encrel, AttributeEncodingAttrelidIndexId, true,
+							  NULL, 1, skey);
+
+	while (HeapTupleIsValid(tup = systable_getnext(scan)))
+	{
+		int 		attnum;
+
+		attnum = heap_getattr(tup, Anum_pg_attribute_encoding_attnum,
+							   RelationGetDescr(encrel), &isnull);
+		Assert(!isnull); /* an entry have to have a valid attnum */
+
+		/* 
+		 * do not go beyond what caller expects (e.g. new column already has 
+		 * pg_attribute_encoding entry, but they are empty and we won't consider).
+		 */
+		if (attnum > natts)
+			continue;
+
+		heap_getattr(tup, Anum_pg_attribute_encoding_lastrownums,
+							   RelationGetDescr(encrel), &isnull);
+		if (!isnull)
+			lastrownums_exist[attnum - 1] = true;
+	}
+
+	systable_endscan(scan);
+	heap_close(encrel, AccessShareLock);
+
+	return lastrownums_exist;
+}
+
+/*
  * Determine which attnums have an entry present in pg_attribute_encoding
  */
 void

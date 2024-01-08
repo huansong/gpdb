@@ -144,7 +144,9 @@ typedef struct AOCSFetchDescData
 	Oid segrelid;
 
 	/* attnum to rownum mapping, used in reading missing column value */
-	int64 *attnum_to_rownum;
+	int64 		*attnum_to_rownum;
+	/* the complete (no missing rows) column we are going to use to get row numbers */
+	AttrNumber 	complete_colno;
 } AOCSFetchDescData;
 
 typedef AOCSFetchDescData *AOCSFetchDesc;
@@ -236,6 +238,9 @@ typedef struct AOCSScanDescData
 
 		/* attnum to rownum mapping, used in reading missing column value */
 		int64 			   *attnum_to_rownum;
+		/* the complete (no missing rows) column we are going to use to get row numbers */
+		AttrNumber			complete_colno;
+
 		struct DatumStreamRead **ds;
 	} columnScanInfo;
 
@@ -373,6 +378,10 @@ typedef struct AOCSWriteColumnDescData
 	AOCSWriteColumnOperation op;
 } AOCSWriteColumnDescData;
 typedef AOCSWriteColumnDescData *AOCSWriteColumnDesc;
+
+/* function to help find a complete column to scan */
+extern int 
+column_to_scan(AOCSFileSegInfo **segInfos, int nseg, int natts, Relation aocsrel, AttrNumber *proj_atts, AttrNumber num_proj_atts);
 
 /* ----------------
  *		function prototypes for appendoptimized columnar access method

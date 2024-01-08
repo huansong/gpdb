@@ -9305,6 +9305,74 @@ ATExecDropColumn(List **wqueue, Relation rel, const char *colName,
 				 errmsg("cannot drop column \"%s\" because it is part of the partition key of relation \"%s\"",
 						colName, RelationGetRelationName(rel))));
 
+	/*
+	 * GPDB: although rare, but if it's the last complete column of an AOCO table, 
+	 * dropping it means losing row number information in the data files. So conduct
+	 * an ad-hoc column rewrite (for creating a new complete column) in that case.
+	 */
+	if (RelationStorageIsAoCols(rel))
+	{
+		AttrNumber 	natts = RelationGetNumberOfAttributes(rel);
+		AttrNumber 	nexistcols = 0;
+		AttrNumber 	ncompletecols = 0;
+		AttrNumber 	attnum_to_rewrite = 0;
+		bool 		*column_not_complete = ExistValidLastrownums(RelationGetRelid(rel), natts);
+
+		/* if we aren't dropping a complete column, no need to worry */
+		if (!column_not_complete[attnum - 1])
+		{
+			/* check how many complete columns and existed columns in the table */
+			for (int i = 0; i < natts; i++)
+			{
+				HeapTuple atttup;
+				atttup = SearchSysCacheAttNum(RelationGetRelid(rel), i + 1);
+				if (atttup)
+				{
+					nexistcols++;
+					if (!column_not_complete[i])
+						ncompletecols++;
+					else if (attnum_to_rewrite == 0)
+						attnum_to_rewrite = i + 1;
+					ReleaseSysCache(atttup);
+				}
+			}
+
+			Assert(ncompletecols > 0 && nexistcols > 0);
+
+			/*
+			 * if we're dropping the last complete column which is not the last column
+			 * in the table, we have a need to conduct a column rewrite right here.
+			 */
+			if (ncompletecols == 1 && nexistcols > 1)
+			{
+				HeapTuple 		atttup = SearchSysCacheAttNum(RelationGetRelid(rel), attnum_to_rewrite);
+				Form_pg_attribute 	atttupform = (Form_pg_attribute) GETSTRUCT(atttup);
+				NewColumnValue 		*newval = (NewColumnValue *) palloc0(sizeof(NewColumnValue));
+				Node       		*transform = (Node *) makeVar(1, attnum_to_rewrite,
+                                                                                 atttupform->atttypid, atttupform->atttypmod,
+                                                                                 atttupform->attcollation,
+                                                                                 0);
+
+				transform = (Node *) expression_planner((Expr *) transform);
+
+				ReleaseSysCache(atttup);
+
+				if (Gp_role == GP_ROLE_DISPATCH)
+					ereport(WARNING,
+							(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+							 errmsg("dropping the last complete column \"%s\" of the AOCO table incurs a column rewrite"
+								" of the incomplete column %s. This DROP COLUMN command might be slower than usual",
+									colName, atttupform->attname.data)));
+
+				newval->attnum = attnum_to_rewrite;
+				newval->expr = (Expr *) transform;
+				newval->is_generated = false;
+				newval->op = AOCSREWRITECOLUMN;
+				table_relation_rewrite_columns(rel, lappend(NIL, newval), CreateTupleDescCopyConstr(RelationGetDescr(rel)));
+			}
+		}
+	}
+
 	ReleaseSysCache(tuple);
 
 	/*
