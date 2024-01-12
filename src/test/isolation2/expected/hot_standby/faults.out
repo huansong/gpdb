@@ -218,6 +218,9 @@ select wait_until_all_segments_synchronized();
  Success:                 
 (1 row)
 
+1: create table tt_hs_dtx(a int);
+CREATE TABLE
+
 -- inject fault to cripple QE right after a QE finished the prepare phase of 2PC
 select gp_inject_fault_infinite('finish_commit_prepared', 'error', dbid) from gp_segment_configuration where content=1 and role='p';
  gp_inject_fault_infinite 
@@ -228,8 +231,8 @@ select gp_inject_fault_infinite('finish_commit_prepared', 'error', dbid) from gp
 -- session 1 on primary QD tries to commit a DTX, but cannot finish due to the fault on a QE
 1: begin;
 BEGIN
-1: create table tt_hs_dtx(a int);
-CREATE TABLE
+1: insert into tt_hs_dtx select * from generate_series(1,10);
+INSERT 0 10
 1&: end;  <waiting ...>
 
 -- inject a panic on primary QD, essentially restarts the primary QD
@@ -266,7 +269,7 @@ server closed the connection unexpectedly
  8  
  9  
 (10 rows)
--- XXX: currently it sees the in-doubt DTX but it shouldnt' when we supported DTX isolation.
+-- it cannot see rows from the in-doubt DTX
 -1S: select * from tt_hs_dtx;
  a 
 ---
