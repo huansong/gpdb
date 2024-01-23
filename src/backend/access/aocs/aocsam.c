@@ -329,6 +329,30 @@ initscan_with_colinfo(AOCSScanDesc scan)
 			scan->columnScanInfo.proj_atts[attno] = attno;
 	}
 
+	/* make sure we always scan complete column before we scan anything else */
+	if (scan->columnScanInfo.proj_atts[0] != scan->columnScanInfo.complete_colno)
+	{
+		AttrNumber temp_col = scan->columnScanInfo.proj_atts[0];
+
+		scan->columnScanInfo.proj_atts[0] = scan->columnScanInfo.complete_colno;
+		for (AttrNumber attno = 1; attno < scan->columnScanInfo.num_proj_atts; attno++)
+		{
+			AttrNumber next_temp_col;
+			if (scan->columnScanInfo.proj_atts[attno] == scan->columnScanInfo.complete_colno)
+			{
+				/* stop if we see the complete column, the rest can stay as is */
+				scan->columnScanInfo.proj_atts[attno] = temp_col;
+				temp_col = -1;
+				break;
+			}
+			next_temp_col = scan->columnScanInfo.proj_atts[attno];
+			scan->columnScanInfo.proj_atts[attno] = temp_col;
+			temp_col = next_temp_col;
+		}
+		if (temp_col >= 0)
+			scan->columnScanInfo.proj_atts[scan->columnScanInfo.num_proj_atts++] = temp_col;
+	}
+
 	open_ds_read(scan->rs_base.rs_rd, scan->columnScanInfo.ds,
 				 scan->columnScanInfo.relationTupleDesc,
 				 scan->columnScanInfo.proj_atts, scan->columnScanInfo.num_proj_atts,
@@ -638,11 +662,11 @@ aocs_beginscan_internal(Relation relation,
 				scan->columnScanInfo.proj_atts[scan->columnScanInfo.num_proj_atts++] = i;
 		}
 		/* add the complete column if not already in the projection */
-		if (!proj[scan->columnScanInfo.complete_colno])
-			scan->columnScanInfo.proj_atts[scan->columnScanInfo.num_proj_atts++] = scan->columnScanInfo.complete_colno;
+		/*if (!proj[scan->columnScanInfo.complete_colno])
+			scan->columnScanInfo.proj_atts[scan->columnScanInfo.num_proj_atts++] = scan->columnScanInfo.complete_colno;*/
 
 		/* we should never have more projected columns than the total number of columns */
-		Assert(scan->columnScanInfo.num_proj_atts <= natts);
+		//Assert(scan->columnScanInfo.num_proj_atts <= natts);
 	}
 	else
 	{
@@ -1100,16 +1124,17 @@ aocs_gettuple(AOCSScanDesc scan, int64 targrow, TupleTableSlot *slot)
 	rowstoprocess = targrow - scan->segfirstrow + 1;
 
 	/* read from scan->cur_seg */
-	for (AttrNumber i = -1; i < scan->columnScanInfo.num_proj_atts; i++)
+	for (AttrNumber i = 0; i < scan->columnScanInfo.num_proj_atts; i++)
 	{
+		AttrNumber attno = scan->columnScanInfo.proj_atts[i];
 		/* start with the complete column, then others in the proj_atts */
-		AttrNumber attno;
+		/*AttrNumber attno;
 		if (i == -1)
 			attno = scan->columnScanInfo.complete_colno;
 		else if (i == scan->columnScanInfo.complete_colno)
 			continue;
 		else
-			attno = scan->columnScanInfo.proj_atts[i];
+			attno = scan->columnScanInfo.proj_atts[i];*/
 
 		DatumStreamRead *ds = scan->columnScanInfo.ds[attno];
 		int64 startrow = scan->segfirstrow + scan->segrowsprocessed;
@@ -1308,23 +1333,22 @@ ReadNext:
 		curseginfo = scan->seginfo[scan->cur_seg];
 
 		/* Read from cur_seg */
-		for (AttrNumber i = -1; i < scan->columnScanInfo.num_proj_atts; i++)
+		for (AttrNumber i = 0; i < scan->columnScanInfo.num_proj_atts; i++)
 		{
-			AttrNumber	attno;
+			AttrNumber	attno = scan->columnScanInfo.proj_atts[i];
 
 			/* 
 			 * decide which column to scan: always start with complete_colno
 			 * first, and then iterate each projected column one-by-one.
 			 */
-			if (i == -1)
+			/*if (i == -1)
 				attno = scan->columnScanInfo.complete_colno;
 			else
 			{
 				attno = scan->columnScanInfo.proj_atts[i];
-				/* no need to scan the complete column again */
 				if (attno == scan->columnScanInfo.complete_colno)
 					continue;
-			}
+			}*/
 
 			/*
 			 * Check missing value before reading from data files.
