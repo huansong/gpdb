@@ -267,6 +267,7 @@ DtxContextInfo_Copy(
 	target->haveDistributedSnapshot = source->haveDistributedSnapshot;
 	target->cursorContext = source->cursorContext;
 
+	elog(LOG, "TEST: copying dtx snapshot, source->haveDistributedSnapshot ? %d", source->haveDistributedSnapshot);
 	if (source->haveDistributedSnapshot)
 		DistributedSnapshot_Copy(&target->distributedSnapshot,
 								 &source->distributedSnapshot);

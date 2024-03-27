@@ -1,0 +1,62 @@
+-- restore-point based transaction isolation
+
+1: create table hs_rp_t1(a int);
+CREATE TABLE
+1: insert into hs_rp_t1 select * from generate_series(1,10);
+INSERT 0 10
+1: insert into hs_rp_t1 values(100);
+INSERT 0 1
+1: select sum(1) from gp_create_restore_point('rp1');
+ sum 
+-----
+ 4   
+(1 row)
+-1S: set gp_restore_point_name_for_hot_standby = 'rp1';
+SET
+-1S: select count(*) from hs_rp_t1;
+ count 
+-------
+ 11    
+(1 row)
+
+-- The primary deletes the result but the standby still uses 'rp1' and see the old result.
+1: delete from hs_rp_t1;
+DELETE 11
+-1S: select count(*) from hs_rp_t1;
+ count 
+-------
+ 11    
+(1 row)
+
+-- The primary creates a new RP, the standby will use the latest RP, and see the latest result.
+1: select sum(1) from gp_create_restore_point('rp2');
+ sum 
+-----
+ 4   
+(1 row)
+-1S: set gp_restore_point_name_for_hot_standby = 'rp2';
+SET
+-1S: select count(*) from hs_rp_t1;
+ count 
+-------
+ 0     
+(1 row)
+
+-- The primary inserts more rows creates a new RP, then deletes & vacuums all the rows.
+-- The standby query, using 'rp3', will fail because the snapshot for 'rp3' conflicts with the VACUUM.
+1: insert into hs_rp_t1 select * from generate_series(1,10);
+INSERT 0 10
+1: select sum(1) from gp_create_restore_point('rp3');
+ sum 
+-----
+ 4   
+(1 row)
+1: delete from hs_rp_t1;
+DELETE 10
+1: vacuum hs_rp_t1;
+VACUUM
+-1S: set gp_restore_point_name_for_hot_standby = 'rp3';
+SET
+-1S: select count(*) from hs_rp_t1;
+ERROR:  TEST: snapshot for rp rp3 not valid, bail out (snapmgr.c:349)
+

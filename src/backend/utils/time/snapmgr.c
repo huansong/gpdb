@@ -323,6 +323,88 @@ GetTransactionSnapshot(void)
 		return HistoricSnapshot;
 	}
 
+	//if (LastRestorePointSnapshot)
+		//return LastRestorePointSnapshot;
+
+	if ((DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
+		 DistributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
+		 DistributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT ||
+		 DistributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON ||
+		 DistributedTransactionContext == DTX_CONTEXT_QE_READER) &&
+		QEDtxContextInfo.haveDistributedSnapshot &&
+		!Debug_disable_distributed_snapshot &&
+		IS_HOT_STANDBY_QE())
+	{
+		if (!FirstSnapshotSet)
+		{
+			RestorePointInfo rp;
+			char *rpname = QEDtxContextInfo.distributedSnapshot.rpname;
+			char hashkey[MAXFNAMELEN];
+			memset(hashkey, 0, MAXFNAMELEN);
+			strncpy(hashkey, rpname, strlen(rpname));
+			bool found;
+
+			LWLockAcquire(RestorePointHashLock, LW_SHARED);
+			rp = hash_search(restorePointHash, hashkey, HASH_FIND, &found);
+			if (!found)
+				elog(ERROR, "TEST: snapshot for rp %s not valid, bail out", hashkey);
+			else
+				elog(LOG, "TEST: got dtx snapshot for rp %s, snapshot name %s", hashkey, rp->snapshot);
+			ImportSnapshot(rp->snapshot);
+			LWLockRelease(RestorePointHashLock);
+			CurrentSnapshot->haveDistribSnapshot = true;
+			DistributedSnapshot_Copy(&CurrentSnapshot->distribSnapshotWithLocalMapping.ds, &QEDtxContextInfo.distributedSnapshot);
+			FirstSnapshotSet = true;
+			return CurrentSnapshot;
+		}
+		else
+			return CurrentSnapshot;
+	}
+	/* 1. if using no RP, normal snapshot
+	 * 2. if using latest RP, using latest RP
+	 * 3. using specfic RP
+	*/
+	else if (IS_HOT_STANDBY_QD() && DistributedTransactionContext != DTX_CONTEXT_QD_CREATE_RP && (gp_restore_point_name_for_hot_standby && strcmp(gp_restore_point_name_for_hot_standby, NON_RP_NAME) != 0))
+	{
+		if (!FirstSnapshotSet)
+		{
+			RestorePointInfo rp;
+			char hashkey[MAXFNAMELEN];
+			bool found;
+			memset(hashkey, 0, MAXFNAMELEN);
+			if (!gp_restore_point_name_for_hot_standby)
+				elog(ERROR, "gp_restore_point_name_for_hot_standby is not set, abort query.");
+			else if (strcmp(gp_restore_point_name_for_hot_standby, LATEST_RP_NAME) == 0)
+			{
+				ereport(LOG,
+						(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+						 errmsg("gp_restore_point_name_for_hot_standby is set to \"%s\", so use the latest RP \"%s\"", LATEST_RP_NAME, shmLatestRpName)));
+				strncpy(hashkey, shmLatestRpName, strlen(shmLatestRpName));
+				hashkey[strlen(shmLatestRpName)] = 0;
+			}
+			else
+			{
+				strncpy(hashkey, gp_restore_point_name_for_hot_standby, strlen(gp_restore_point_name_for_hot_standby));
+				hashkey[strlen(gp_restore_point_name_for_hot_standby)] = 0;
+			}
+
+			LWLockAcquire(RestorePointHashLock, LW_SHARED);
+			rp = hash_search(restorePointHash, hashkey, HASH_FIND, &found);
+			if (!found)
+				elog(ERROR, "TEST: snapshot for rp %s not valid, bail out", hashkey);
+			else
+				elog(LOG, "TEST: got dtx snapshot for rp %s, snapshot name %s", hashkey, rp->snapshot);
+			ImportSnapshot(rp->snapshot);
+			FirstSnapshotSet = true;
+			strcpy(CurrentSnapshot->distribSnapshotWithLocalMapping.ds.rpname, hashkey);
+			LWLockRelease(RestorePointHashLock);
+			elog(LOG, "TEST: imported snapshot with rpname %s", CurrentSnapshot->distribSnapshotWithLocalMapping.ds.rpname);
+			return CurrentSnapshot;
+		}
+		else
+			return CurrentSnapshot;
+	}
+
 	/* First call in transaction? */
 	if (!FirstSnapshotSet)
 	{
@@ -680,8 +762,9 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 	 * Note: in serializable mode, predicate.c will do this a second time. It
 	 * doesn't seem worth contorting the logic here to avoid two calls,
 	 * especially since it's not clear that predicate.c *must* do this.
+	 * FIXME
 	 */
-	if (sourceproc != NULL)
+	/*if (sourceproc != NULL)
 	{
 		if (!ProcArrayInstallRestoredXmin(CurrentSnapshot->xmin, sourceproc))
 			ereport(ERROR,
@@ -694,7 +777,7 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
 				 errmsg("could not import the requested snapshot"),
 				 errdetail("The source process with PID %d is not running anymore.",
-						   sourcepid)));
+						   sourcepid)));*/
 
 	/*
 	 * In transaction-snapshot mode, the first snapshot must live until end of
@@ -755,7 +838,10 @@ CopySnapshot(Snapshot snapshot)
 			sizeof(TransactionId);
 	}
 
-	newsnap = (Snapshot) MemoryContextAlloc(TopTransactionContext, size);
+	if (TopTransactionContext)
+		newsnap = (Snapshot) MemoryContextAlloc(TopTransactionContext, size);
+	else
+		newsnap = (Snapshot) MemoryContextAlloc(TopMemoryContext, size);
 	memcpy(newsnap, snapshot, sizeof(SnapshotData));
 
 	newsnap->regd_count = 0;
@@ -1307,7 +1393,6 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 	Assert(resetXmin || MyPgXact->xmin == 0);
 }
 
-
 /*
  * ExportSnapshot
  *		Export the snapshot to a file so that other backends can import it.
@@ -1316,6 +1401,17 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
  */
 char *
 ExportSnapshot(Snapshot snapshot)
+{
+	return ExportSnapshotWithName(snapshot, NULL);
+}
+
+/*
+ * ExportSnapshotWithName
+ * 		GPDB: this function optionally uses a name for the snapshot rather
+ * 		than the upstream format. Also, we'll include distributed snapshot too.
+ */
+char *
+ExportSnapshotWithName(Snapshot snapshot, const char *snapshot_name)
 {
 	TransactionId topXid;
 	TransactionId *children;
@@ -1370,8 +1466,12 @@ ExportSnapshot(Snapshot snapshot)
 	 * Generate file path for the snapshot.  We start numbering of snapshots
 	 * inside the transaction from 1.
 	 */
-	snprintf(path, sizeof(path), SNAPSHOT_EXPORT_DIR "/%08X-%08X-%d",
-			 MyProc->backendId, MyProc->lxid, list_length(exportedSnapshots) + 1);
+	if (snapshot_name)
+		snprintf(path, sizeof(path), SNAPSHOT_EXPORT_DIR "/%s",
+				 snapshot_name);
+	else
+		snprintf(path, sizeof(path), SNAPSHOT_EXPORT_DIR "/%08X-%08X-%d",
+				 MyProc->backendId, MyProc->lxid, list_length(exportedSnapshots) + 1);
 
 	/*
 	 * Copy the snapshot into TopTransactionContext, add it to the
@@ -1381,7 +1481,10 @@ ExportSnapshot(Snapshot snapshot)
 	 */
 	snapshot = CopySnapshot(snapshot);
 
-	oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+	if (TopTransactionContext)
+		oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+	else
+		oldcxt = MemoryContextSwitchTo(TopMemoryContext);
 	esnap = (ExportedSnapshot *) palloc(sizeof(ExportedSnapshot));
 	esnap->snapfile = pstrdup(path);
 	esnap->snapshot = snapshot;
@@ -1660,20 +1763,22 @@ ImportSnapshot(const char *idstr)
 	/*
 	 * If we are in read committed mode then the next query would execute with
 	 * a new snapshot thus making this function call quite useless.
+	 * FIXME: workaround this
 	 */
-	if (!IsolationUsesXactSnapshot())
+	/*if (!IsolationUsesXactSnapshot())
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("a snapshot-importing transaction must have isolation level SERIALIZABLE or REPEATABLE READ")));
+				 errmsg("a snapshot-importing transaction must have isolation level SERIALIZABLE or REPEATABLE READ")));*/
 
 	/*
 	 * Verify the identifier: only 0-9, A-F and hyphens are allowed.  We do
 	 * this mainly to prevent reading arbitrary files.
+	 * FIXME: allow all characters then?
 	 */
-	if (strspn(idstr, "0123456789ABCDEF-") != strlen(idstr))
+	/*if (strspn(idstr, "0123456789ABCDEF-") != strlen(idstr))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
+				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));*/
 
 	/* OK, read the file */
 	snprintf(path, MAXPGPATH, SNAPSHOT_EXPORT_DIR "/%s", idstr);
@@ -1791,14 +1896,15 @@ ImportSnapshot(const char *idstr)
 	 * Do some additional sanity checking, just to protect ourselves.  We
 	 * don't trouble to check the array elements, just the most critical
 	 * fields.
+	 * FIXME
 	 */
-	if (!VirtualTransactionIdIsValid(src_vxid) ||
+	/*if (!VirtualTransactionIdIsValid(src_vxid) ||
 		!OidIsValid(src_dbid) ||
 		!TransactionIdIsNormal(snapshot.xmin) ||
 		!TransactionIdIsNormal(snapshot.xmax))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
-				 errmsg("invalid snapshot data in file \"%s\"", path)));
+				 errmsg("invalid snapshot data in file \"%s\"", path)));*/
 
 	/*
 	 * If we're serializable, the source transaction must be too, otherwise
@@ -1826,11 +1932,12 @@ ImportSnapshot(const char *idstr)
 	 * xmin as being globally applicable.  But that would require some
 	 * additional syntax, since that has to be known when the snapshot is
 	 * initially taken.  (See pgsql-hackers discussion of 2011-10-21.)
+	 * FIXME
 	 */
-	if (src_dbid != MyDatabaseId)
+	/*if (src_dbid != MyDatabaseId)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("cannot import a snapshot from a different database")));
+				 errmsg("cannot import a snapshot from a different database")));*/
 
 	/* OK, install the snapshot */
 	SetTransactionSnapshot(&snapshot, &src_vxid, src_pid, NULL);
@@ -1879,6 +1986,47 @@ DeleteAllExportedSnapshotFiles(void)
 			ereport(LOG,
 					(errcode_for_file_access(),
 					 errmsg("could not remove file \"%s\": %m", buf)));
+	}
+
+	FreeDir(s_dir);
+}
+
+/*
+ * DeleteExportedSnapshotFiles
+ *		Similar to DeleteAllExportedSnapshotFiles(), just delete selected list of files.
+ *
+ * GPDB: this is called after invalidating restore point in case of snapshot conflict for hot standby.
+ */
+void
+DeleteExportedSnapshotFiles(List *files)
+{
+	char		buf[MAXPGPATH + sizeof(SNAPSHOT_EXPORT_DIR)];
+	DIR		   *s_dir;
+	struct dirent *s_de;
+
+	/*
+	 * Problems in reading the directory, or unlinking files, are reported at
+	 * LOG level.  Since we're running in the startup process, ERROR level
+	 * would prevent database start, and it's not important enough for that.
+	 */
+	s_dir = AllocateDir(SNAPSHOT_EXPORT_DIR);
+
+	while ((s_de = ReadDirExtended(s_dir, SNAPSHOT_EXPORT_DIR, LOG)) != NULL)
+	{
+		ListCell *lc;
+
+		foreach(lc, files)
+		{
+			if (strcmp(s_de->d_name, lfirst(lc)) != 0)
+				continue;
+
+			snprintf(buf, sizeof(buf), SNAPSHOT_EXPORT_DIR "/%s", s_de->d_name);
+
+			if (unlink(buf) != 0)
+				ereport(LOG,
+						(errcode_for_file_access(),
+						 errmsg("could not remove file \"%s\": %m", buf)));
+		}
 	}
 
 	FreeDir(s_dir);

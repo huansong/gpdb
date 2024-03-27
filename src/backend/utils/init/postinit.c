@@ -838,7 +838,11 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		 */
 		XactIsoLevel = XACT_READ_COMMITTED;
 
+		/* temporarily set it to allow connection */
+		char *save = gp_restore_point_name_for_hot_standby;
+		gp_restore_point_name_for_hot_standby = NON_RP_NAME;
 		(void) GetTransactionSnapshot();
+		gp_restore_point_name_for_hot_standby = save;
 	}
 
 	/*

@@ -137,6 +137,10 @@ typedef enum
 	 *    MyTmGxactLocal.
 	 */
 	DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE,
+	/**
+	 * TODO: comments
+	 */
+	DTX_CONTEXT_QD_CREATE_RP,
 
 	/**
 	 * On QD: indicates that the second-phase of the two-phase commit is being retried.
@@ -289,6 +293,8 @@ extern slock_t *shmGxidGenLock;
 extern DistributedTransactionId *shmCommittedGxidArray;
 extern volatile int *shmNumCommittedGxacts;
 
+extern char *shmLatestRpName;
+
 extern bool IsDtxRecoveryProcess(void);
 
 extern char *DtxStateToString(DtxState state);
@@ -319,6 +325,7 @@ extern void redoDistributedForgetCommitRecord(DistributedTransactionId gxid);
 extern void setupDtxTransaction(void);
 extern DtxState getCurrentDtxState(void);
 extern void bumpGxid(void);
+extern void LogLatestCompletedGxid(void);
 extern bool isCurrentDtxActivated(void);
 
 extern void sendDtxExplicitBegin(void);

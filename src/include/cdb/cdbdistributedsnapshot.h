@@ -37,6 +37,8 @@ typedef struct DistributedSnapshot
 
 	/* Array of distributed transactions in progress. */
 	DistributedTransactionId        *inProgressXidArray;
+	/* Restore point name for this snapshot */
+	char 				rpname[64];
 } DistributedSnapshot;
 
 /*

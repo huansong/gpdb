@@ -23,8 +23,10 @@
 #include "lib/stringinfo.h"
 #include "storage/buf.h"
 #include "storage/fd.h"
+#include "utils/hsearch.h"
 #include "utils/pg_crc.h"
 #include "utils/relcache.h"
+#include "cdb/cdbdistributedsnapshot.h"
 #include "cdb/cdbpublic.h"
 #include "nodes/pg_list.h"
 
@@ -94,6 +96,19 @@ typedef enum
 	RECOVERY_TARGET_LSN,
 	RECOVERY_TARGET_IMMEDIATE
 } RecoveryTargetType;
+
+/* RP data to be recorded for hot standby */
+typedef struct RestorePointInfoData
+{
+	char rpname[MAXFNAMELEN];
+	char snapshot[MAXFNAMELEN]; //XXX: the snapshot name theorectically can be MAXPGPATH, but practically it shouldn't be more than 64. Should we have some assert somewhere to guard that?
+	TransactionId xmin; /* for fast conflict check */
+} RestorePointInfoData;
+
+typedef RestorePointInfoData *RestorePointInfo;
+
+extern HTAB *restorePointHash;
+extern void InitRestorePointInfo(void);
 
 /*
  * Recovery target TimeLine goal

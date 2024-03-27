@@ -2269,6 +2269,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 * GP: Distributed snapshot.
 	 */
 	Assert(distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+		   distributedTransactionContext == DTX_CONTEXT_QD_CREATE_RP ||
 		   distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
 		   distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
 		   distributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT ||
@@ -2288,10 +2289,30 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		QEDtxContextInfo.haveDistributedSnapshot &&
 		!Debug_disable_distributed_snapshot)
 	{
-		DistributedSnapshot_Copy(&snapshot->distribSnapshotWithLocalMapping.ds, &QEDtxContextInfo.distributedSnapshot);
-		snapshot->haveDistribSnapshot = true;
+		//if (!IS_STANDBY_QE())
+		//{
+			DistributedSnapshot_Copy(&snapshot->distribSnapshotWithLocalMapping.ds, &QEDtxContextInfo.distributedSnapshot);
+			snapshot->haveDistribSnapshot = true;
+		/*}
+		else
+		{
+			RestorePointInfo rp;
+			char *hashkey = snapshot->distribSnapshotWithLocalMapping.ds.rpname;
+			bool found;
+
+			RestorePointInfo rp;
+			hash_search(restorePointHash, hashkey, HASH_FIND, &found);
+			if (!found)
+				elog(ERROR, "TEST: snapshot for rp %s not valid, bail out", hashkey);
+			else
+				elog(LOG, "TEST: got dtx snapshot for rp %s, snapshot name %s", hashkey, rp->snapshot);
+			ImportSnapshot(rp->snapshot);
+			LastRestorePointSnapshot = CurrentSnapshot;
+			return CurrentSnapshot;
+		}*/
 	}
 
+	/*XXX: what to do with this?*/
 	/* reader gang copy local snapshot from writer gang */
 	if (SharedLocalSnapshotSlot != NULL &&
 		(distributedTransactionContext == DTX_CONTEXT_QE_READER ||
@@ -2318,6 +2339,28 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	ereport((Debug_print_full_dtm ? LOG : DEBUG5),
 			(errmsg("GetSnapshotData setting globalxmin and xmin to %u",
 					xmin)));
+
+	/* XXX: apply this only to standby QE, and also only for RP-based */
+	/* XXX: protect this in case of concurrent update. Thought: every backend builds a private list during startup. */
+	if (Gp_role == GP_ROLE_EXECUTE)
+	{
+		/*ListCell *lc;
+		foreach(lc, restorePointList)
+		{
+			RestorePointInfo rp = lfirst(lc);
+			if (NormalTransactionIdPrecedes(rp->lcxid, xmin))
+				elog(ERROR, "TEST: query fail");
+		}*/
+		/* XXX: temp testing: if it's rp1, reject; otherwise, good */
+		/*char    hashkey[MAXFNAMELEN];
+		RestorePointInfo rp;
+		bool found;
+		memset(hashkey, 0, MAXFNAMELEN);
+		strncpy(hashkey, "rp1", 3);
+		rp = hash_search(restorePointHash, hashkey, HASH_FIND, &found);
+		if (found)
+			elog(ERROR, "TEST: query fail");*/
+	}
 
 	/*
 	 * Get the distributed snapshot if needed and copy it into the field 
@@ -2506,8 +2549,9 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	}
 
 	/* GP: QD takes a distributed snapshot iff QD not in retry phase and the query needs distributed snapshot */
-	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && !Debug_disable_distributed_snapshot 
-			&& needDistributedSnapshot)
+	/* Standby QD always creates dtx snapshot */
+	if ((distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && !Debug_disable_distributed_snapshot 
+			&& needDistributedSnapshot) || IS_HOT_STANDBY_QD())
 	{
 		CreateDistributedSnapshot(ds);
 		snapshot->haveDistribSnapshot = true;
@@ -2533,8 +2577,10 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	if (!IS_QUERY_DISPATCHER())
 	{
 		if (snapshot->haveDistribSnapshot)
+		{
 			globalxmin = DistributedLog_AdvanceOldestXmin(globalxmin,
 														  ds->xminAllDistributedSnapshots);
+		}
 		else if (!gp_maintenance_mode)
 			globalxmin = DistributedLog_GetOldestXmin(globalxmin);
 	}
@@ -3590,6 +3636,43 @@ GetConflictingVirtualXIDs(TransactionId limitXmin, Oid dbOid)
 	}
 
 	LWLockRelease(ProcArrayLock);
+
+	/* GPDB: check all snapshots taken at restore points, and invalidate them.
+	 * Also remove them.
+	*/
+	HASH_SEQ_STATUS hash_seq;
+	hash_seq_init(&hash_seq, restorePointHash);
+	RestorePointInfo rp;
+	bool found;
+	List *files = NULL;
+	/* protect the access, until we removed the entry *and* the cooresponding snapshot files */
+	LWLockAcquire(RestorePointHashLock, LW_EXCLUSIVE);
+	while ((rp = hash_seq_search(&hash_seq)) != NULL)
+	{
+		Assert(TransactionIdIsValid(rp->xmin)); /* XXX: is it alwasy true? */
+		if (!TransactionIdIsValid(limitXmin) ||
+			!TransactionIdFollows(rp->xmin, limitXmin))
+		{
+			hash_search(restorePointHash, rp->rpname, HASH_REMOVE, &found);
+			if (!found)
+			{
+				/* This shouldn't happen, but we don't want panic, just exit gracefuly. */
+				hash_seq_term(&hash_seq);
+				ereport(WARNING,
+							errmsg("Cannot remove RP %s. Entry not existed. ", rp->rpname));
+				break;
+			}
+			else
+			{
+				files = lappend(files, pstrdup(rp->rpname));
+				ereport(DEBUG1,
+							errmsg("removed/invalidated RP %s", rp->rpname));
+			}
+		}
+	}
+	/* Remove the files*/
+	DeleteExportedSnapshotFiles(files);
+	LWLockRelease(RestorePointHashLock);
 
 	/* add the terminator */
 	vxids[count].backendId = InvalidBackendId;

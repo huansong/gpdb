@@ -133,6 +133,7 @@ extern void LogDistributedSnapshotInfo(Snapshot snapshot, const char *prefix);
 extern void ImportSnapshot(const char *idstr);
 extern bool XactHasExportedSnapshots(void);
 extern void DeleteAllExportedSnapshotFiles(void);
+extern void DeleteExportedSnapshotFiles(List *files);
 extern bool ThereAreNoPriorRegisteredSnapshots(void);
 extern TransactionId TransactionIdLimitedForOldSnapshots(TransactionId recentXmin,
 														 Relation relation);
@@ -140,6 +141,7 @@ extern void MaintainOldSnapshotTimeMapping(TimestampTz whenTaken,
 										   TransactionId xmin);
 
 extern char *ExportSnapshot(Snapshot snapshot);
+extern char *ExportSnapshotWithName(Snapshot snapshot, const char *snapshot_name);
 
 /*
  * Utility functions for implementing visibility routines in table AMs.

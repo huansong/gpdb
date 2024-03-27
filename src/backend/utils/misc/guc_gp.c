@@ -418,6 +418,9 @@ int			gp_max_system_slices;
 static int	gp_server_version_num;
 static char *gp_server_version_string;
 
+/* XXX: comment*/
+char *gp_restore_point_name_for_hot_standby = NULL;
+
 /* Query Metrics */
 bool		gp_enable_query_metrics = false;
 int			gp_instrument_shmem_size = 5120;
@@ -4771,6 +4774,17 @@ struct config_string ConfigureNamesString_gp[] =
 		},
 		&gp_server_version_string,
 		GP_VERSION,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"gp_restore_point_name_for_hot_standby", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Sets the restore point name which is used by hot standby for transaction isolation."),
+			NULL,
+			GUC_REPORT | GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE
+		},
+		&gp_restore_point_name_for_hot_standby,
+		NULL,
 		NULL, NULL, NULL
 	},
 

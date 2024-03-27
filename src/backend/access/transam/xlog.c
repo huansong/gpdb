@@ -131,6 +131,7 @@ char *gp_pause_on_restore_point_replay = "";
  * gp_pause_on_restore_point_replay and a promotion has been requested.
  */
 static bool reachedContinuousRecoveryTarget = false;
+HTAB *restorePointHash;
 
 #ifdef WAL_DEBUG
 bool		XLOG_DEBUG = false;
@@ -6169,6 +6170,8 @@ RecoveryIsPaused(void)
 void
 SetRecoveryPause(bool recoveryPause)
 {
+	ereport(LOG,
+			(errmsg("TEST: set recovery pause %d",recoveryPause)));
 	SpinLockAcquire(&XLogCtl->info_lck);
 	XLogCtl->recoveryPause = recoveryPause;
 	SpinLockRelease(&XLogCtl->info_lck);
@@ -7328,8 +7331,11 @@ StartupXLOG(void)
 		/*
 		 * Likewise, delete any saved transaction snapshot files that got left
 		 * behind by crashed backends.
+		 * GPDB: the hot standby might still rely on the exported snapshot.
+		 * TODO: maybe remove those are not auto-exported 
 		 */
-		DeleteAllExportedSnapshotFiles();
+		if (!(ArchiveRecoveryRequested && EnableHotStandby))
+			DeleteAllExportedSnapshotFiles();
 
 		/*
 		 * Initialize for Hot Standby, if enabled. We won't let backends in
@@ -9605,21 +9611,14 @@ CreateCheckPoint(int flags)
 	{
 		LogStandbySnapshot();
 
+		/*
+		 * GPDB: write latestCompletedGxid too, because the standby needs this 
+		 * value for creating distributed snapshot. The standby cannot rely on
+		 * the nextGxid value to set latestCompletedGxid during restart (which 
+		 * the primary does) because nextGxid was bumped in the checkpoint.
+		 */
 		if (IS_QUERY_DISPATCHER())
-		{
-			/*
-			 * GPDB: write latestCompletedGxid too, because the standby needs this 
-			 * value for creating distributed snapshot. The standby cannot rely on
-			 * the nextGxid value to set latestCompletedGxid during restart (which 
-			 * the primary does) because nextGxid was bumped in the checkpoint.
-			 */
-			LWLockAcquire(ProcArrayLock, LW_SHARED);
-			DistributedTransactionId lcgxid = ShmemVariableCache->latestCompletedGxid;
-			LWLockRelease(ProcArrayLock);
-			XLogBeginInsert();
-			XLogRegisterData((char *) (&lcgxid), sizeof(lcgxid));
-			recptr = XLogInsert(RM_XLOG_ID, XLOG_LATESTCOMPLETED_GXID);
-		}
+			LogLatestCompletedGxid();
 	}
 
 	SIMPLE_FAULT_INJECTOR("checkpoint_after_redo_calculated");
@@ -10941,7 +10940,62 @@ xlog_redo(XLogReaderState *record)
 	}
 	else if (info == XLOG_RESTORE_POINT)
 	{
-		/* nothing to do here */
+		RestorePointInfo rp;
+		bool found;
+		char *name;
+		/* GPDB: remember this RP for hot standby's record */
+		if (EnableHotStandby && ArchiveRecoveryRequested)
+		{
+			char hashkey[MAXFNAMELEN];
+			memset(hashkey, 0, MAXFNAMELEN);
+			name = ((xl_restore_point *) XLogRecGetData(record))->rp_name;
+			strncpy(hashkey, name, strlen(name));
+
+			LWLockAcquire(RestorePointHashLock, LW_EXCLUSIVE);
+			rp = hash_search(restorePointHash, hashkey, HASH_ENTER, &found);
+
+			/* we see an RP with existing name, ignore it */
+			if (found)
+			{
+				ereport(WARNING,
+						(errmsg("Replayed restore point \"%s\" that is already registered, ignore it",
+								hashkey)));
+				LWLockRelease(RestorePointHashLock);
+				return;
+			}
+
+			// TODO: free the snapshot and whatever is allocated in TopMemoryContext
+			// TODO: remove the exported snapshots on disk at some point
+			if (IS_QUERY_DISPATCHER())
+			{
+				//Snapshot snapshot = CopySnapshot(GetTransactionSnapshot());
+				DistributedTransactionContext = DTX_CONTEXT_QD_CREATE_RP;
+				Snapshot snapshot = GetTransactionSnapshot();
+				DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
+				//PushActiveSnapshot(snapshot);
+				char *snapshot_name = ExportSnapshotWithName(snapshot, name);
+				strcpy(rp->snapshot, snapshot_name);
+				rp->xmin = snapshot->xmin;
+				strcpy(shmLatestRpName, name);
+				shmLatestRpName[strlen(name)] = 0;
+				//PopActiveSnapshot();
+				elog(LOG, "standby QD replays RP %s, dtx snapshot ID=%d", rp->rpname, snapshot->distribSnapshotWithLocalMapping.ds.distribSnapshotId);
+				//elog(LOG, "standby QD replays RP %s, exports snapshot %s, dtx snapshot ID=%d", rp->rpname, snapshot_name, snapshot->distribSnapshotWithLocalMapping.ds.distribSnapshotId);
+			}
+			else
+			{
+				//Snapshot snapshot = CopySnapshot(GetTransactionSnapshot());
+				Snapshot snapshot = GetTransactionSnapshot();
+				//PushActiveSnapshot(snapshot);
+				char *snapshot_name = ExportSnapshotWithName(snapshot, name);
+				strcpy(rp->snapshot, snapshot_name);
+				rp->xmin = snapshot->xmin;
+				//PopActiveSnapshot();
+				elog(LOG, "standby QE replays RP %s, local snapshot xmin=%d", rp->rpname, snapshot->xmin);
+				//elog(LOG, "standby QE replays RP %s, exports snapshot %s, local snapshot xmin=%d", rp->rpname, snapshot_name, snapshot->xmin);
+			}
+			LWLockRelease(RestorePointHashLock);
+		}
 	}
 	else if (info == XLOG_FPI || info == XLOG_FPI_FOR_HINT)
 	{
@@ -13712,4 +13766,33 @@ void
 XLogRequestWalReceiverReply(void)
 {
 	doRequestWalReceiverReply = true;
+}
+
+/* GPDB: Used for distributed snapshot isolation for hot standby. */
+void
+InitRestorePointInfo(void)
+{
+	HASHCTL		info;
+	long		init_table_size,
+				max_table_size;
+
+	/*
+	 * FIXME: this is rather arbitrary atm
+	 */
+	init_table_size = 8;
+	max_table_size = 32;
+
+	/*
+	 * Allocate hash table for LOCK structs.  This stores per-locked-object
+	 * information.
+	 */
+	MemSet(&info, 0, sizeof(info));
+	info.keysize = MAXFNAMELEN;
+	info.entrysize = sizeof(RestorePointInfoData);
+
+	restorePointHash = ShmemInitHash("Restore Point hash",
+									   init_table_size,
+									   max_table_size,
+									   &info,
+									   HASH_ELEM | HASH_BLOBS);
 }
