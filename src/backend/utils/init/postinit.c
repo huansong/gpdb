@@ -823,9 +823,12 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 	 * Mirror operates in standby mode and is not ready to start a
 	 * transaction or create a snapshot.  Neither are they required to
 	 * respond to a FTS message.
+	 * XXX: am_mirror seems unused besides in unit test (it's false even for standby). Check if we can remvoe it.
 	 */
 	if (!bootstrap && !am_mirror)
 	{
+		HotStandbySnapshotMode save;
+
 		/* statement_timestamp must be set for timeouts to work correctly */
 		SetCurrentStatementStartTimestamp();
 		StartTransactionCommand();
@@ -838,7 +841,20 @@ InitPostgres(const char *in_dbname, Oid dboid, const char *username,
 		 */
 		XactIsoLevel = XACT_READ_COMMITTED;
 
+		/*
+		 * GPDB: on hot standby, we might need to rely on restore points
+		 * to create snapshot (HS_SNAPSHOT_RESTOREPOINT). If no restore 
+		 * point is provided, we don't serve queries but we still want to
+		 * be able to be connected (e.g. so restore point can be provided).
+		 * So always temporarily use unsync snapshot to allow connection.
+		 * We are not using this snapshot anyway, as mentioned by comments above.
+		 */
+		save = gp_hot_standby_snapshot_mode;
+		gp_hot_standby_snapshot_mode = HS_SNAPSHOT_UNSYNC;
+
 		(void) GetTransactionSnapshot();
+
+		gp_hot_standby_snapshot_mode = save;
 	}
 
 	/*

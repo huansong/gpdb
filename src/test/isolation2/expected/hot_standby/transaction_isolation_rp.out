@@ -1,0 +1,596 @@
+-- Tests for restore point (RP) based transaction isolation for hot standby
+
+!\retcode gpconfig -c gp_hot_standby_snapshot_mode -v restorepoint;
+(exited with code 0)
+!\retcode gpstop -u;
+(exited with code 0)
+
+----------------------------------------------------------------
+-- Basic transaction isolation test
+----------------------------------------------------------------
+
+1: create table hs_rp_basic(a int, b text);
+CREATE TABLE
+
+-- in-progress transaction won't be visible
+2: begin;
+BEGIN
+2: insert into hs_rp_basic select i,'in_progress' from generate_series(1,5) i;
+INSERT 0 5
+-- transactions completed before the RP: all would be visible on standby, including 1PC and 2PC
+1: insert into hs_rp_basic select i,'complete_before_rp1_2pc' from generate_series(1,5) i;
+INSERT 0 5
+1: insert into hs_rp_basic values(1, 'complete_before_rp1_1pc');
+INSERT 0 1
+
+-- take the RP
+1: select sum(1) from gp_create_restore_point('rp1');
+ sum 
+-----
+ 4   
+(1 row)
+
+-- transactions after the RP: won't be visible on standby
+1: insert into hs_rp_basic select i,'complete_after_rp1_2pc' from generate_series(1,5) i;
+INSERT 0 5
+1: insert into hs_rp_basic values(1, 'complete_after_rp1_1pc');
+INSERT 0 1
+
+-- set RP name on standby
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp1';
+SET
+-- see expected result
+-1S: select * from hs_rp_basic;
+ a | b                       
+---+-------------------------
+ 5 | complete_before_rp1_2pc 
+ 1 | complete_before_rp1_2pc 
+ 1 | complete_before_rp1_1pc 
+ 2 | complete_before_rp1_2pc 
+ 3 | complete_before_rp1_2pc 
+ 4 | complete_before_rp1_2pc 
+(6 rows)
+
+-- more completed transactions, including completing the in-progress one
+1: insert into hs_rp_basic select i,'complete_after_rp1' from generate_series(1,5) i;
+INSERT 0 5
+2: update hs_rp_basic set b = 'in_progress_at_rp1_complete_after_rp1' where b = 'in_progress';
+UPDATE 5
+2: end;
+COMMIT
+-- still won't be seen on the standby
+-1S: select * from hs_rp_basic;
+ a | b                       
+---+-------------------------
+ 1 | complete_before_rp1_2pc 
+ 1 | complete_before_rp1_1pc 
+ 5 | complete_before_rp1_2pc 
+ 2 | complete_before_rp1_2pc 
+ 3 | complete_before_rp1_2pc 
+ 4 | complete_before_rp1_2pc 
+(6 rows)
+
+-- a new RP is created
+1: select sum(1) from gp_create_restore_point('rp2');
+ sum 
+-----
+ 4   
+(1 row)
+1: insert into hs_rp_basic select i,'complete_after_rp2_2pc' from generate_series(1,5) i;
+INSERT 0 5
+1: insert into hs_rp_basic select i,'complete_after_rp2_1pc' from generate_series(1,5) i;
+INSERT 0 5
+
+-- the standby uses it, and sees all that completed before 'rp2'
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp2';
+SET
+-1S: select * from hs_rp_basic;
+ a | b                                     
+---+---------------------------------------
+ 5 | complete_before_rp1_2pc               
+ 5 | complete_after_rp1_2pc                
+ 5 | complete_after_rp1                    
+ 5 | in_progress_at_rp1_complete_after_rp1 
+ 2 | complete_before_rp1_2pc               
+ 3 | complete_before_rp1_2pc               
+ 4 | complete_before_rp1_2pc               
+ 2 | complete_after_rp1_2pc                
+ 3 | complete_after_rp1_2pc                
+ 4 | complete_after_rp1_2pc                
+ 2 | complete_after_rp1                    
+ 3 | complete_after_rp1                    
+ 4 | complete_after_rp1                    
+ 2 | in_progress_at_rp1_complete_after_rp1 
+ 3 | in_progress_at_rp1_complete_after_rp1 
+ 4 | in_progress_at_rp1_complete_after_rp1 
+ 1 | complete_before_rp1_2pc               
+ 1 | complete_before_rp1_1pc               
+ 1 | complete_after_rp1_2pc                
+ 1 | complete_after_rp1_1pc                
+ 1 | complete_after_rp1                    
+ 1 | in_progress_at_rp1_complete_after_rp1 
+(22 rows)
+
+-- using an earlier RP, and sees result according to that
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp1';
+SET
+-1S: select * from hs_rp_basic;
+ a | b                       
+---+-------------------------
+ 2 | complete_before_rp1_2pc 
+ 3 | complete_before_rp1_2pc 
+ 4 | complete_before_rp1_2pc 
+ 5 | complete_before_rp1_2pc 
+ 1 | complete_before_rp1_2pc 
+ 1 | complete_before_rp1_1pc 
+(6 rows)
+
+----------------------------------------------------------------
+-- More testing around the gp_hot_standby_snapshot_mode and
+-- gp_hot_standby_snapshot_restore_point_name GUCs
+----------------------------------------------------------------
+
+-- standby uses "unsync" snapshot mode, will see the latest result (which might be
+-- inconsistent in real life because that can only guarantteed with making sure all
+-- standby has replayed the same RP).
+-1S: set gp_hot_standby_snapshot_mode = unsync;
+SET
+-1S: select * from hs_rp_basic;
+ a | b                                     
+---+---------------------------------------
+ 5 | complete_before_rp1_2pc               
+ 5 | complete_after_rp1_2pc                
+ 5 | complete_after_rp1                    
+ 5 | in_progress_at_rp1_complete_after_rp1 
+ 5 | complete_after_rp2_2pc                
+ 5 | complete_after_rp2_1pc                
+ 2 | complete_before_rp1_2pc               
+ 3 | complete_before_rp1_2pc               
+ 4 | complete_before_rp1_2pc               
+ 2 | complete_after_rp1_2pc                
+ 3 | complete_after_rp1_2pc                
+ 4 | complete_after_rp1_2pc                
+ 2 | complete_after_rp1                    
+ 3 | complete_after_rp1                    
+ 4 | complete_after_rp1                    
+ 2 | in_progress_at_rp1_complete_after_rp1 
+ 3 | in_progress_at_rp1_complete_after_rp1 
+ 4 | in_progress_at_rp1_complete_after_rp1 
+ 2 | complete_after_rp2_2pc                
+ 3 | complete_after_rp2_2pc                
+ 4 | complete_after_rp2_2pc                
+ 2 | complete_after_rp2_1pc                
+ 3 | complete_after_rp2_1pc                
+ 4 | complete_after_rp2_1pc                
+ 1 | complete_before_rp1_2pc               
+ 1 | complete_before_rp1_1pc               
+ 1 | complete_after_rp1_2pc                
+ 1 | complete_after_rp1_1pc                
+ 1 | complete_after_rp1                    
+ 1 | in_progress_at_rp1_complete_after_rp1 
+ 1 | complete_after_rp2_2pc                
+ 1 | complete_after_rp2_1pc                
+(32 rows)
+
+-- standby uses "restorepoint" snapshot mode, but gives no RP name, should use the
+-- latest RP which is "rp2". This can be inconsistent in real life too, if not with
+-- the "synchronous_commit=remote_apply" setting.
+-1S: set gp_hot_standby_snapshot_mode = restorepoint;
+SET
+-1S: reset gp_hot_standby_snapshot_restore_point_name;
+RESET
+-1S: select * from hs_rp_basic;
+ a | b                                     
+---+---------------------------------------
+ 5 | complete_before_rp1_2pc               
+ 5 | complete_after_rp1_2pc                
+ 5 | complete_after_rp1                    
+ 5 | in_progress_at_rp1_complete_after_rp1 
+ 2 | complete_before_rp1_2pc               
+ 3 | complete_before_rp1_2pc               
+ 4 | complete_before_rp1_2pc               
+ 2 | complete_after_rp1_2pc                
+ 3 | complete_after_rp1_2pc                
+ 4 | complete_after_rp1_2pc                
+ 2 | complete_after_rp1                    
+ 3 | complete_after_rp1                    
+ 4 | complete_after_rp1                    
+ 2 | in_progress_at_rp1_complete_after_rp1 
+ 3 | in_progress_at_rp1_complete_after_rp1 
+ 4 | in_progress_at_rp1_complete_after_rp1 
+ 1 | complete_before_rp1_2pc               
+ 1 | complete_before_rp1_1pc               
+ 1 | complete_after_rp1_2pc                
+ 1 | complete_after_rp1_1pc                
+ 1 | complete_after_rp1                    
+ 1 | in_progress_at_rp1_complete_after_rp1 
+(22 rows)
+
+-- standby uses an invalid RP name, should complain
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp-non-exist';
+SET
+-1S: select * from hs_rp_basic;
+ERROR:  cannot find snapshot to use for restore point "rp-non-exist"
+HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
+
+-- primary creates a same-name RP, standby won't create snapshot for it,
+-- and still use the old snapshot
+1: select sum(1) from gp_create_restore_point('rp1');
+ sum 
+-----
+ 4   
+(1 row)
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp1';
+SET
+-1S: select * from hs_rp_basic;
+ a | b                       
+---+-------------------------
+ 5 | complete_before_rp1_2pc 
+ 2 | complete_before_rp1_2pc 
+ 3 | complete_before_rp1_2pc 
+ 4 | complete_before_rp1_2pc 
+ 1 | complete_before_rp1_2pc 
+ 1 | complete_before_rp1_1pc 
+(6 rows)
+
+----------------------------------------------------------------
+-- Tests that simulates out-of-sync WAL replays on standby coordinator and segments
+----------------------------------------------------------------
+-- remote_apply needs to be turned off for these tests
+-- XXX: probably need fault injection to make sure no flakiness
+1: set synchronous_commit = off;
+SET
+
+--
+-- Case 1: standby coordinator WAL replay is delayed
+--
+-1S: select pg_wal_replay_pause();
+ pg_wal_replay_pause 
+---------------------
+                     
+(1 row)
+1: select sum(1) from gp_create_restore_point('rp-qe-only');
+ sum 
+-----
+ 4   
+(1 row)
+
+-- This RP is only replayed on (some) QEs so far, so the query will fail.
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp-qe-only';
+SET
+-1S: select * from hs_rp_basic;
+ERROR:  cannot find snapshot to use for restore point "rp-qe-only"
+HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
+-- And if we use the latest RP, we would be using 'rp2' and see corresponding results.
+-1S: reset gp_hot_standby_snapshot_restore_point_name;
+RESET
+-1S: select * from hs_rp_basic;
+ a | b                                     
+---+---------------------------------------
+ 1 | complete_before_rp1_2pc               
+ 1 | complete_before_rp1_1pc               
+ 1 | complete_after_rp1_2pc                
+ 1 | complete_after_rp1_1pc                
+ 1 | complete_after_rp1                    
+ 1 | in_progress_at_rp1_complete_after_rp1 
+ 5 | complete_before_rp1_2pc               
+ 5 | complete_after_rp1_2pc                
+ 5 | complete_after_rp1                    
+ 5 | in_progress_at_rp1_complete_after_rp1 
+ 2 | complete_before_rp1_2pc               
+ 3 | complete_before_rp1_2pc               
+ 4 | complete_before_rp1_2pc               
+ 2 | complete_after_rp1_2pc                
+ 3 | complete_after_rp1_2pc                
+ 4 | complete_after_rp1_2pc                
+ 2 | complete_after_rp1                    
+ 3 | complete_after_rp1                    
+ 4 | complete_after_rp1                    
+ 2 | in_progress_at_rp1_complete_after_rp1 
+ 3 | in_progress_at_rp1_complete_after_rp1 
+ 4 | in_progress_at_rp1_complete_after_rp1 
+(22 rows)
+
+-- resume replay on QD
+-1S: select pg_wal_replay_resume();
+ pg_wal_replay_resume 
+----------------------
+                      
+(1 row)
+
+--
+-- Case 2: standby segment WAL replay is delayed
+--
+-1S: select pg_wal_replay_pause() from gp_dist_random('gp_id');
+ pg_wal_replay_pause 
+---------------------
+                     
+                     
+                     
+(3 rows)
+1: select sum(1) from gp_create_restore_point('rp-qd-only');
+ sum 
+-----
+ 4   
+(1 row)
+
+-- This RP is only replayed on QD so far, so the query will fail.
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp-qd-only';
+SET
+-1S: select * from hs_rp_basic;
+ERROR:  cannot find snapshot to use for restore point "rp-qd-only"  (seg0 slice1 127.0.1.1:7005 pid=26323)
+HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
+-- If we use the latest RP, it would still be the one above, so same result.
+-1S: reset gp_hot_standby_snapshot_restore_point_name;
+RESET
+-1S: select * from hs_rp_basic;
+ERROR:  cannot find snapshot to use for restore point "rp-qd-only"  (seg0 slice1 127.0.1.1:7005 pid=26323)
+HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
+-- Unless we use an RP that we know is consistent
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp2';
+SET
+-1S: select * from hs_rp_basic;
+ a | b                                     
+---+---------------------------------------
+ 5 | complete_before_rp1_2pc               
+ 5 | complete_after_rp1_2pc                
+ 5 | complete_after_rp1                    
+ 5 | in_progress_at_rp1_complete_after_rp1 
+ 1 | complete_before_rp1_2pc               
+ 1 | complete_before_rp1_1pc               
+ 1 | complete_after_rp1_2pc                
+ 1 | complete_after_rp1_1pc                
+ 1 | complete_after_rp1                    
+ 1 | in_progress_at_rp1_complete_after_rp1 
+ 2 | complete_before_rp1_2pc               
+ 3 | complete_before_rp1_2pc               
+ 4 | complete_before_rp1_2pc               
+ 2 | complete_after_rp1_2pc                
+ 3 | complete_after_rp1_2pc                
+ 4 | complete_after_rp1_2pc                
+ 2 | complete_after_rp1                    
+ 3 | complete_after_rp1                    
+ 4 | complete_after_rp1                    
+ 2 | in_progress_at_rp1_complete_after_rp1 
+ 3 | in_progress_at_rp1_complete_after_rp1 
+ 4 | in_progress_at_rp1_complete_after_rp1 
+(22 rows)
+
+--resume
+-1S: select pg_wal_replay_resume() from gp_dist_random('gp_id');
+ pg_wal_replay_resume 
+----------------------
+                      
+                      
+                      
+(3 rows)
+
+-- reset for the rest of tests
+1: reset synchronous_commit;
+RESET
+
+----------------------------------------------------------------
+-- Crash recovery test
+----------------------------------------------------------------
+
+1: create table hs_rp_crash(a int);
+CREATE TABLE
+
+--
+-- Case 1: standby coordinator/segment restart, and replay from a checkpoint
+-- that's behind the RP which they are going to use.
+--
+
+-- completed tx before RP, will be seen
+1: insert into hs_rp_crash select * from generate_series(1,10);
+INSERT 0 10
+2: begin;
+BEGIN
+2: insert into hs_rp_crash select * from generate_series(11,20);
+INSERT 0 10
+1: select sum(1) from gp_create_restore_point('rptest_crash1');
+ sum 
+-----
+ 4   
+(1 row)
+
+-- completed tx after RP, won't be seen
+1: insert into hs_rp_crash select * from generate_series(21,30);
+INSERT 0 10
+
+--in-progress tx at the time of RP, won't be seen
+2: end;
+COMMIT
+
+-- make sure restarted standby would redo *after* the RP
+1: checkpoint;
+CHECKPOINT
+-1S: checkpoint;
+CHECKPOINT
+
+-- standby coordinator restarts
+-1S: select gp_inject_fault('exec_simple_query_start', 'panic', dbid) from gp_segment_configuration where content=-1 and role='m';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+-1S: select 1;
+PANIC:  fault triggered, fault name:'exec_simple_query_start' fault type:'panic'
+server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+-1Sq: ... <quitting>
+
+-- sees expected result corresponding to the RP
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rptest_crash1';
+SET
+-1S: select count(*) from hs_rp_crash;
+ count 
+-------
+ 10    
+(1 row)
+
+-- standby segment restarts, and still can use previous RP too
+
+-- seg0 restarts
+-1S: select gp_inject_fault('exec_mpp_query_start', 'panic', dbid) from gp_segment_configuration where content=0 and role='m';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+-1S: select count(*) from hs_rp_crash;
+ERROR:  fault triggered, fault name:'exec_mpp_query_start' fault type:'panic'  (seg0 slice1 127.0.1.1:7005 pid=783)
+
+-- sees expected result corresponding to the RP
+-1S: select count(*) from hs_rp_crash;
+ count 
+-------
+ 10    
+(1 row)
+
+--
+-- Case 2: standby coordinator/segment restart, and replay from a checkpoint
+-- that's behind the RP which they are going to use.
+-- The effect should be the same as Case 1.
+--
+
+1: truncate hs_rp_crash;
+TRUNCATE TABLE
+
+-- make sure restarted standby would redo *before* the RP
+-- completed tx before RP, will be seen
+1: insert into hs_rp_crash select * from generate_series(1,10);
+INSERT 0 10
+2: begin;
+BEGIN
+2: insert into hs_rp_crash select * from generate_series(11,20);
+INSERT 0 10
+
+-- make sure restarted standby would redo *before* the RP
+1: checkpoint;
+CHECKPOINT
+-1S: checkpoint;
+CHECKPOINT
+
+1: select sum(1) from gp_create_restore_point('rptest_crash2');
+ sum 
+-----
+ 4   
+(1 row)
+
+-- completed tx after RP, won't be seen
+1: insert into hs_rp_crash select * from generate_series(21,30);
+INSERT 0 10
+
+--in-progress tx at the time of RP, won't be seen
+2: end;
+COMMIT
+
+-- standby coordinator restarts
+-1S: select gp_inject_fault('exec_simple_query_start', 'panic', dbid) from gp_segment_configuration where content=-1 and role='m';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+-1S: select 1;
+PANIC:  fault triggered, fault name:'exec_simple_query_start' fault type:'panic'
+server closed the connection unexpectedly
+	This probably means the server terminated abnormally
+	before or while processing the request.
+-1Sq: ... <quitting>
+
+-- sees expected result corresponding to the RP
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rptest_crash2';
+SET
+-1S: select count(*) from hs_rp_crash;
+ count 
+-------
+ 10    
+(1 row)
+
+-- standby segment restarts, and still can use previous RP too
+
+-- seg0 restarts
+-1S: select gp_inject_fault('exec_mpp_query_start', 'panic', dbid) from gp_segment_configuration where content=0 and role='m';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+-1S: select count(*) from hs_rp_crash;
+ERROR:  fault triggered, fault name:'exec_mpp_query_start' fault type:'panic'  (seg0 slice1 127.0.1.1:7005 pid=831)
+
+-- sees expected result corresponding to the RP
+-1S: select count(*) from hs_rp_crash;
+ count 
+-------
+ 10    
+(1 row)
+
+----------------------------------------------------------------
+-- Snapshot conflict test
+----------------------------------------------------------------
+
+1: create table hs_rp_conflict(a int);
+CREATE TABLE
+
+-- The primary inserts some rows, creates an RP, then deletes & vacuums all the rows.
+-- The standby query, using that RP, will conflict and be cancelled.
+1: insert into hs_rp_conflict select * from generate_series(1,10);
+INSERT 0 10
+1: select sum(1) from gp_create_restore_point('rp_conflict');
+ sum 
+-----
+ 4   
+(1 row)
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp_conflict';
+SET
+1: delete from hs_rp_conflict;
+DELETE 10
+1: vacuum hs_rp_conflict;
+VACUUM
+
+-- The RP is invalidated and the snapshot deleted, the query will fail
+-1S: select count(*) from hs_rp_conflict;
+ERROR:  cannot find snapshot to use for restore point "rp_conflict"  (seg0 slice1 127.0.1.1:7005 pid=26425)
+HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
+
+-- Because the VACUUM invalidates the latest RP, it effectively also invalidated all
+-- RPs prior to that. So segments shouldn't have any snapshots left on disk.
+-- In order to run the pg_ls_dir, set the snapshot mode to unsync (since all RPs/snapshots are gone).
+-1S: set gp_hot_standby_snapshot_mode = 'unsync';
+SET
+-1S: select gp_segment_id, pg_ls_dir('pg_snapshots') from gp_dist_random('gp_id');
+ gp_segment_id | pg_ls_dir 
+---------------+-----------
+(0 rows)
+-- the coordinator still has it because the VACUUM only cleans up row on segments - so conflict only on segments too
+-1S: select pg_ls_dir('pg_snapshots');
+ pg_ls_dir                                  
+--------------------------------------------
+ gp_snapshot_for_restorepoint_rp-qd-only    
+ gp_snapshot_for_restorepoint_rp2           
+ gp_snapshot_for_restorepoint_rptest_crash1 
+ gp_snapshot_for_restorepoint_rptest_crash2 
+ gp_snapshot_for_restorepoint_rp1           
+ gp_snapshot_for_restorepoint_rp_conflict   
+ gp_snapshot_for_restorepoint_rp-qe-only    
+(7 rows)
+
+-- But if we vacuum something on coordinator (using utility mode), then it would invalidate all RPs and delete snapshots too.
+-1U: insert into hs_rp_conflict values(1);
+INSERT 0 1
+-1U: delete from hs_rp_conflict;
+DELETE 1
+-1U: vacuum hs_rp_conflict;
+VACUUM
+-1S: select pg_ls_dir('pg_snapshots');
+ pg_ls_dir 
+-----------
+(0 rows)
+
+-- Go back to unsync for any other tests
+!\retcode gpconfig -c gp_hot_standby_snapshot_mode -v unsync;
+(exited with code 0)
+!\retcode gpstop -u;
+(exited with code 0)
+

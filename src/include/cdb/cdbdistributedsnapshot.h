@@ -17,6 +17,8 @@
 /* This is a shipped header, do not include other files under "cdb" */
 #include "c.h"     /* DistributedTransactionId */
 
+#include "access/xlog_internal.h" /* MAXFNAMELEN */
+
 #define DistributedSnapshot_StaticInit {0,0,0,0,0,0}
 
 typedef struct DistributedSnapshot
@@ -37,6 +39,8 @@ typedef struct DistributedSnapshot
 
 	/* Array of distributed transactions in progress. */
 	DistributedTransactionId        *inProgressXidArray;
+	/* Restore point name for this snapshot */
+	char 				rpname[MAXFNAMELEN];
 } DistributedSnapshot;
 
 /*

@@ -191,6 +191,7 @@
 		"gp_global_deadlock_detector_period",
 		"gp_gxid_prefetch_num",
 		"gp_heap_require_relhasoids_match",
+		"gp_hot_standby_snapshot_restore_point_name",
 		"gp_instrument_shmem_size",
 		"gp_is_writer",
 		"gp_local_distributed_cache_stats",

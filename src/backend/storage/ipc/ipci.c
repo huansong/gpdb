@@ -323,6 +323,10 @@ CreateSharedMemoryAndSemaphores(int port)
 	/* Initialize vmem protection */
 	GPMemoryProtect_ShmemInit();
 
+	/* Init restore point to snapshot hash table info for hot standby */
+	if (EnableHotStandby)
+		InitRestorePointHash();
+
 	CreateSharedProcArray();
 	CreateSharedBackendStatus();
 	

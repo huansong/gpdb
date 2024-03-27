@@ -316,6 +316,60 @@ ResolveRecoveryConflictWithVirtualXIDs(VirtualTransactionId *waitlist,
 	}
 }
 
+/*
+ * GPDB: check all snapshots taken at restore points, and invalidate if they
+ * conflict with latestRemovedXid. Also remove the on-disk exported snapshots.
+ */
+static void
+invalidateRestorePoint(TransactionId latestRemovedXid)
+{
+	HASH_SEQ_STATUS		hash_seq;
+	RestorePointInfo 	rp;
+	bool 			found;
+	char 			snapshotname[MAXFNAMELEN + sizeof(RP_SNAPSHOT_PREFIX)];
+	List 			*files = NULL;
+
+	hash_seq_init(&hash_seq, RestorePointHash);
+
+	/*
+	 * Lock to protect the access to RestorePointHash, until we removed the 
+	 * entry *and* the cooresponding snapshot files.
+	 */
+	LWLockAcquire(RestorePointHashLock, LW_EXCLUSIVE);
+
+	while ((rp = hash_seq_search(&hash_seq)) != NULL)
+	{
+		Assert(TransactionIdIsValid(rp->xmin));
+
+		if (!TransactionIdIsValid(latestRemovedXid) ||
+			!TransactionIdFollows(rp->xmin, latestRemovedXid))
+		{
+			hash_search(RestorePointHash, rp->rpname, HASH_REMOVE, &found);
+			if (!found)
+			{
+				/*
+				 * This shouldn't happen, but we don't want panic in
+				 * startup process, just log and exit gracefuly.
+				 */
+				hash_seq_term(&hash_seq);
+				ereport(WARNING,
+							errmsg("Cannot remove RP %s. Entry not existed. ", rp->rpname));
+				break;
+			}
+			sprintf(snapshotname, "%s%s",
+						RP_SNAPSHOT_PREFIX,
+						rp->rpname);
+			files = lappend(files, pstrdup(snapshotname));
+			ereport(DEBUG1,
+						errmsg("invalidated RP %s and removed its snapshot %s", rp->rpname, snapshotname));
+		}
+	}
+	/* Remove the files*/
+	DeleteExportedSnapshotFiles(files);
+
+	LWLockRelease(RestorePointHashLock);
+}
+
 void
 ResolveRecoveryConflictWithSnapshot(TransactionId latestRemovedXid, RelFileNode node)
 {
@@ -341,6 +395,7 @@ ResolveRecoveryConflictWithSnapshot(TransactionId latestRemovedXid, RelFileNode 
 	ResolveRecoveryConflictWithVirtualXIDs(backends,
 										   PROCSIG_RECOVERY_CONFLICT_SNAPSHOT,
 										   true);
+	invalidateRestorePoint(latestRemovedXid);
 }
 
 void

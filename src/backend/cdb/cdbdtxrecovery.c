@@ -52,6 +52,9 @@ slock_t *shmDtxRecoveryEventLock;
 DistributedTransactionId *shmCommittedGxidArray;
 volatile int *shmNumCommittedGxacts;
 
+/* the latest restore point name being replayed on hot standby */
+char *shmLatestRpName;
+
 static volatile sig_atomic_t got_SIGHUP = false;
 
 static int64 in_doubt_tx_in_progress = 0;

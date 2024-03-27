@@ -231,7 +231,7 @@ DistributedSnapshot_Reset(DistributedSnapshot *distributedSnapshot)
 
 /*
  * Make a copy of a DistributedSnapshot, allocating memory for the in-progress
- * array if necessary.
+ * array if necessary. Copy over restore point name too (which is only used on hot standby).
  *
  * Note: 'target' should be from a static variable, like the argument of GetSnapshotData()
  */
@@ -257,6 +257,8 @@ DistributedSnapshot_Copy(DistributedSnapshot *target,
 	target->xmax = source->xmax;
 	target->count = source->count;
 
+	memcpy(target->rpname, source->rpname, MAXFNAMELEN);
+
 	if (source->count == 0)
 		return;
 
@@ -272,6 +274,8 @@ DistributedSnapshot_SerializeSize(DistributedSnapshot *ds)
 	return sizeof(DistributedSnapshotId) +
 	/* xminAllDistributedSnapshots, xmin, xmax */
 		3 * sizeof(DistributedTransactionId) +
+	/* rpname */
+		64 +
 	/* count */
 		sizeof(int32) +
 	/* Size of inProgressXidArray */
@@ -296,6 +300,9 @@ DistributedSnapshot_Serialize(DistributedSnapshot *ds, char *buf)
 
 	memcpy(p, ds->inProgressXidArray, sizeof(DistributedTransactionId) * ds->count);
 	p += sizeof(DistributedTransactionId) * ds->count;
+
+	memcpy(p, ds->rpname, 64);
+	p += 64;
 
 	Assert((p - buf) == DistributedSnapshot_SerializeSize(ds));
 
@@ -335,6 +342,8 @@ DistributedSnapshot_Deserialize(const char *buf, DistributedSnapshot *ds)
 		memcpy(ds->inProgressXidArray, p, xipsize);
 		p += xipsize;
 	}
+	memcpy(ds->rpname, p, 64);
+	p += 64;
 
 	Assert((p - buf) == DistributedSnapshot_SerializeSize(ds));
 	return (p - buf);
