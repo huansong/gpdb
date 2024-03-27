@@ -2269,6 +2269,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 * GP: Distributed snapshot.
 	 */
 	Assert(distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE ||
+		   distributedTransactionContext == DTX_CONTEXT_REPLAY_RP ||
 		   distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
 		   distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
 		   distributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT ||
@@ -2292,6 +2293,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		snapshot->haveDistribSnapshot = true;
 	}
 
+	/* XXX: what to do with this?*/
 	/* reader gang copy local snapshot from writer gang */
 	if (SharedLocalSnapshotSlot != NULL &&
 		(distributedTransactionContext == DTX_CONTEXT_QE_READER ||
@@ -2505,9 +2507,15 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		MyPgXact->xmin = TransactionXmin = xmin;
 	}
 
-	/* GP: QD takes a distributed snapshot iff QD not in retry phase and the query needs distributed snapshot */
-	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE && !Debug_disable_distributed_snapshot 
+	/*
+	 * GP: QD takes a distributed snapshot iff QD not in retry phase and the
+	 * query needs distributed snapshot. The exception is hot standby startup
+	 * process which would create snapshot at the time of replaying restore point.
+	 */
+	if ((distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE 
+			&& !Debug_disable_distributed_snapshot 
 			&& needDistributedSnapshot)
+		|| (distributedTransactionContext == DTX_CONTEXT_REPLAY_RP))
 	{
 		CreateDistributedSnapshot(ds);
 		snapshot->haveDistribSnapshot = true;
@@ -2533,8 +2541,10 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	if (!IS_QUERY_DISPATCHER())
 	{
 		if (snapshot->haveDistribSnapshot)
+		{
 			globalxmin = DistributedLog_AdvanceOldestXmin(globalxmin,
 														  ds->xminAllDistributedSnapshots);
+		}
 		else if (!gp_maintenance_mode)
 			globalxmin = DistributedLog_GetOldestXmin(globalxmin);
 	}

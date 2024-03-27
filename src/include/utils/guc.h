@@ -606,6 +606,19 @@ extern char  *gp_auth_time_override_str;
 
 extern char  *gp_default_storage_options;
 
+/* option for gp_hot_standby_snapshot_mode */
+#define HS_SNAPSHOT_UNSYNC_STR 				"unsync"
+#define HS_SNAPSHOT_RESTOREPOINT_STR			"restorepoint"
+/* enum for faster internal process */
+typedef enum {
+	HS_SNAPSHOT_UNSYNC = 0,
+	HS_SNAPSHOT_RESTOREPOINT = 1,
+} HotStandbySnapshotMode;
+
+extern HotStandbySnapshotMode gp_hot_standby_snapshot_mode;
+
+extern char *gp_hot_standby_snapshot_restore_point_name;
+
 extern bool gp_quicklz_fallback;
 
 /* copy GUC */

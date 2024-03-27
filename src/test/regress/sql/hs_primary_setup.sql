@@ -27,6 +27,8 @@ SELECT pg_switch_wal();
 
 -- GPDB: enable hot_standby for this cluster
 \! gpconfig -c hot_standby -v on;
+-- also, don't use restore point based snapshot isolation in these tests
+\! gpconfig -c gp_hot_standby_snapshot_mode -v unsync;
 \! gpstop -ar;
 
 -- end_ignore

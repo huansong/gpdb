@@ -300,6 +300,103 @@ SnapMgrInit(void)
 }
 
 /*
+ * GPDB: get the snapshot based on restore point settings.
+ *
+ * Upon successful retrival of a restore point based snapshot, set CurrentSnapshot
+ * to that snapshot and return true.
+ */
+static bool GetRestorePointBasedSnapshot(void)
+{
+	RestorePointInfo 		rp;
+	char 				rpname[MAXFNAMELEN];
+	char 				snapshotname[MAXFNAMELEN + sizeof(RP_SNAPSHOT_PREFIX)];
+	bool 				found;
+
+	/* Irrelevant if not using restore point based snapshot. */
+	if (gp_hot_standby_snapshot_mode != HS_SNAPSHOT_RESTOREPOINT)
+		return false;
+
+	/* Irrelevant for primary nodes. */
+	if (!RecoveryInProgress())
+		return false;	
+
+	/* Irrelevant for single-node mode, such as utility or mainenance mode (mostly just for tests). */
+	if (Gp_role == GP_ROLE_UTILITY || gp_maintenance_mode)
+		return false;	
+
+	/* Skip if we are creating fresh snapshot when replaying RP. */
+	if (DistributedTransactionContext == DTX_CONTEXT_REPLAY_RP)
+		return false;
+
+	/*
+	 * We will be using restore point based snapshot, but skip if we 
+	 * already set one in the current transaction.
+	 */
+	if (FirstSnapshotSet)
+		return true;
+
+	/*
+	 * Now get the restore point name. 
+	 * For QD, it is either specified by GUC or just using the latest restore point.
+	 * For QE, it is passed via distributed snapshot dispatched from QD.
+	 */
+	memset(rpname, 0, MAXFNAMELEN);
+	if (IS_HOT_STANDBY_QD())
+	{
+		if (!gp_hot_standby_snapshot_restore_point_name)
+		{
+			ereport(DEBUG1,
+					(errcode(ERRCODE_UNDEFINED_PARAMETER),
+					errmsg("gp_hot_standby_snapshot_restore_point_name is not set, use the latest RP \"%s\"",
+								shmLatestRpName)));
+			strcpy(rpname, shmLatestRpName);
+		}
+		else
+		{
+			strcpy(rpname, gp_hot_standby_snapshot_restore_point_name);
+		}
+	}
+	else if (IS_HOT_STANDBY_QE())
+	{
+		strcpy(rpname, QEDtxContextInfo.distributedSnapshot.rpname);
+	}
+
+	/* Now find the restore point hash entry, and import the snapshot */
+	LWLockAcquire(RestorePointHashLock, LW_SHARED);
+	rp = hash_search(restorePointHash, rpname, HASH_FIND, &found);
+	if (!found)
+		ereport(ERROR,
+					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+					errmsg("cannot find snapshot to use for restore point \"%s\"",
+								rpname),
+					errhint("Create a new restore point on primary coordinator and set "
+						"gp_hot_standby_snapshot_restore_point_name accordingly.")));
+
+	sprintf(snapshotname, "%s%s",
+				RP_SNAPSHOT_PREFIX,
+				rpname);
+	ImportSnapshot(snapshotname);
+	LWLockRelease(RestorePointHashLock);
+	FirstSnapshotSet = true;
+
+	/* For QD, populate the restore point name. */
+	if (IS_HOT_STANDBY_QD())
+		strcpy(CurrentSnapshot->distribSnapshotWithLocalMapping.ds.rpname, rpname);
+	/*
+	 * For QE, the previously exported snapshot does not include dtx
+	 * snapshot. Copy the one dispatched from QD.
+	 */
+	else if (IS_HOT_STANDBY_QE())
+	{
+		DistributedSnapshot_Copy(&CurrentSnapshot->distribSnapshotWithLocalMapping.ds,
+								&QEDtxContextInfo.distributedSnapshot);
+		CurrentSnapshot->haveDistribSnapshot = true;
+	}
+
+	return true;
+}
+
+/*
  * GetTransactionSnapshot
  *		Get the appropriate snapshot for a new query in a transaction.
  *
@@ -308,8 +405,7 @@ SnapMgrInit(void)
  * RegisterSnapshot or PushActiveSnapshot on the returned snap if it is to be
  * used very long.
  */
-Snapshot
-GetTransactionSnapshot(void)
+Snapshot GetTransactionSnapshot(void)
 {
 	/*
 	 * Return historic snapshot if doing logical decoding. We'll never need a
@@ -322,6 +418,10 @@ GetTransactionSnapshot(void)
 		Assert(!FirstSnapshotSet);
 		return HistoricSnapshot;
 	}
+
+	/* GPDB: check restore point based snapshot. No-op if it doesn't apply. */
+	if (GetRestorePointBasedSnapshot())
+		return CurrentSnapshot;
 
 	/* First call in transaction? */
 	if (!FirstSnapshotSet)
@@ -680,8 +780,15 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 	 * Note: in serializable mode, predicate.c will do this a second time. It
 	 * doesn't seem worth contorting the logic here to avoid two calls,
 	 * especially since it's not clear that predicate.c *must* do this.
+	 * 
+	 * GPDB: don't throw error if we are a hot standby trying to importing
+	 * restore point based snapshot.
 	 */
-	if (sourceproc != NULL)
+	if (EnableHotStandby && RecoveryInProgress() && gp_hot_standby_snapshot_mode == HS_SNAPSHOT_RESTOREPOINT)
+	{
+		/* nothing to do */
+	}
+	else if (sourceproc != NULL)
 	{
 		if (!ProcArrayInstallRestoredXmin(CurrentSnapshot->xmin, sourceproc))
 			ereport(ERROR,
@@ -755,7 +862,10 @@ CopySnapshot(Snapshot snapshot)
 			sizeof(TransactionId);
 	}
 
-	newsnap = (Snapshot) MemoryContextAlloc(TopTransactionContext, size);
+	if (EnableHotStandby && RecoveryInProgress() && gp_hot_standby_snapshot_mode == HS_SNAPSHOT_RESTOREPOINT)
+		newsnap = (Snapshot) MemoryContextAlloc(TopMemoryContext, size);
+	else
+		newsnap = (Snapshot) MemoryContextAlloc(TopTransactionContext, size);
 	memcpy(newsnap, snapshot, sizeof(SnapshotData));
 
 	newsnap->regd_count = 0;
@@ -1307,7 +1417,6 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
 	Assert(resetXmin || MyPgXact->xmin == 0);
 }
 
-
 /*
  * ExportSnapshot
  *		Export the snapshot to a file so that other backends can import it.
@@ -1316,6 +1425,17 @@ AtEOXact_Snapshot(bool isCommit, bool resetXmin)
  */
 char *
 ExportSnapshot(Snapshot snapshot)
+{
+	return ExportSnapshotWithName(snapshot, NULL);
+}
+
+/*
+ * ExportSnapshotWithName
+ * 		GPDB: this function optionally uses a name for the snapshot rather
+ * 		than the upstream format. Also, we'll include distributed snapshot too.
+ */
+char *
+ExportSnapshotWithName(Snapshot snapshot, const char *snapshot_name)
 {
 	TransactionId topXid;
 	TransactionId *children;
@@ -1367,11 +1487,15 @@ ExportSnapshot(Snapshot snapshot)
 	nchildren = xactGetCommittedChildren(&children);
 
 	/*
-	 * Generate file path for the snapshot.  We start numbering of snapshots
-	 * inside the transaction from 1.
+	 * Generate file path for the snapshot if not given.  We start numbering
+	 * of snapshots inside the transaction from 1.
 	 */
-	snprintf(path, sizeof(path), SNAPSHOT_EXPORT_DIR "/%08X-%08X-%d",
-			 MyProc->backendId, MyProc->lxid, list_length(exportedSnapshots) + 1);
+	if (!snapshot_name)
+		snprintf(path, sizeof(path), SNAPSHOT_EXPORT_DIR "/%08X-%08X-%d",
+				 MyProc->backendId, MyProc->lxid, list_length(exportedSnapshots) + 1);
+	else
+		snprintf(path, sizeof(path), SNAPSHOT_EXPORT_DIR "/%s",
+				 snapshot_name);
 
 	/*
 	 * Copy the snapshot into TopTransactionContext, add it to the
@@ -1381,7 +1505,10 @@ ExportSnapshot(Snapshot snapshot)
 	 */
 	snapshot = CopySnapshot(snapshot);
 
-	oldcxt = MemoryContextSwitchTo(TopTransactionContext);
+	if (EnableHotStandby && RecoveryInProgress() && gp_hot_standby_snapshot_mode == HS_SNAPSHOT_RESTOREPOINT)
+		oldcxt = MemoryContextSwitchTo(TopMemoryContext);
+	else
+		oldcxt = MemoryContextSwitchTo(TopTransactionContext);
 	esnap = (ExportedSnapshot *) palloc(sizeof(ExportedSnapshot));
 	esnap->snapfile = pstrdup(path);
 	esnap->snapshot = snapshot;
@@ -1625,6 +1752,8 @@ parseVxidFromText(const char *prefix, char **s, const char *filename,
  *		Import a previously exported snapshot.  The argument should be a
  *		filename in SNAPSHOT_EXPORT_DIR.  Load the snapshot from that file.
  *		This is called by "SET TRANSACTION SNAPSHOT 'foo'".
+ * 		GPDB: this can be called when using restore point based snapshot mode.
+ * 		Certain upstream checks need to be skipped under that mode.
  */
 void
 ImportSnapshot(const char *idstr)
@@ -1643,6 +1772,7 @@ ImportSnapshot(const char *idstr)
 	bool		src_readonly;
 	SnapshotData snapshot;
 	DistributedSnapshot *distributed_snapshot;
+	bool 			is_rp_snapshot_mode = EnableHotStandby && RecoveryInProgress() && gp_hot_standby_snapshot_mode == HS_SNAPSHOT_RESTOREPOINT;
 
 	/*
 	 * Must be at top level of a fresh transaction.  Note in particular that
@@ -1660,8 +1790,12 @@ ImportSnapshot(const char *idstr)
 	/*
 	 * If we are in read committed mode then the next query would execute with
 	 * a new snapshot thus making this function call quite useless.
+	 *
+	 * GPDB: don't throw error if we are a hot standby trying to importing
+	 * restore point based snapshot. Even read-committed transaction will be
+	 * importing snapshot under this mode.
 	 */
-	if (!IsolationUsesXactSnapshot())
+	if (!IsolationUsesXactSnapshot() && !is_rp_snapshot_mode)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("a snapshot-importing transaction must have isolation level SERIALIZABLE or REPEATABLE READ")));
@@ -1669,8 +1803,11 @@ ImportSnapshot(const char *idstr)
 	/*
 	 * Verify the identifier: only 0-9, A-F and hyphens are allowed.  We do
 	 * this mainly to prevent reading arbitrary files.
+	 *
+	 * GPDB: similar as before, restore point based snapshot mode has special
+	 * snapshot name which allows any characters.
 	 */
-	if (strspn(idstr, "0123456789ABCDEF-") != strlen(idstr))
+	if (strspn(idstr, "0123456789ABCDEF-") != strlen(idstr) && !is_rp_snapshot_mode)
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
@@ -1791,11 +1928,14 @@ ImportSnapshot(const char *idstr)
 	 * Do some additional sanity checking, just to protect ourselves.  We
 	 * don't trouble to check the array elements, just the most critical
 	 * fields.
+	 *
+	 * GPDB: restore point snapshot is generated by startup process which
+	 * doesn't have valid vxid or dbid. Skip the checks.
 	 */
-	if (!VirtualTransactionIdIsValid(src_vxid) ||
+	if (!is_rp_snapshot_mode && (!VirtualTransactionIdIsValid(src_vxid) ||
 		!OidIsValid(src_dbid) ||
 		!TransactionIdIsNormal(snapshot.xmin) ||
-		!TransactionIdIsNormal(snapshot.xmax))
+		!TransactionIdIsNormal(snapshot.xmax)))
 		ereport(ERROR,
 				(errcode(ERRCODE_INVALID_TEXT_REPRESENTATION),
 				 errmsg("invalid snapshot data in file \"%s\"", path)));
@@ -1826,14 +1966,69 @@ ImportSnapshot(const char *idstr)
 	 * xmin as being globally applicable.  But that would require some
 	 * additional syntax, since that has to be known when the snapshot is
 	 * initially taken.  (See pgsql-hackers discussion of 2011-10-21.)
+	 *
+	 * GPDB: restore point snapshot is generated by startup process which doesn't
+	 * have valid dbid.
+	 * XXX: this needs to be looked further, but the exported snapshot by startup 
+	 * definitely isn't based on any certain database.
 	 */
-	if (src_dbid != MyDatabaseId)
+	if (src_dbid != MyDatabaseId && !is_rp_snapshot_mode)
 		ereport(ERROR,
 				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 				 errmsg("cannot import a snapshot from a different database")));
 
 	/* OK, install the snapshot */
 	SetTransactionSnapshot(&snapshot, &src_vxid, src_pid, NULL);
+}
+
+/*
+ * ImportXminFromSnapshot
+ *		A subset of ImportantSnapshot, but just read up to xmin and return the value.
+ */
+static TransactionId ImportXminFromSnapshot(const char *idstr)
+{
+	char		path[MAXPGPATH];
+	FILE	   *f;
+	struct stat stat_buf;
+	char	   *filebuf;
+	VirtualTransactionId src_vxid;
+	int			src_pid;
+	Oid			src_dbid;
+	int			src_isolevel;
+	bool		src_readonly;
+	TransactionId 		xmin;
+
+	snprintf(path, MAXPGPATH, SNAPSHOT_EXPORT_DIR "/%s", idstr);
+
+	f = AllocateFile(path, PG_BINARY_R);
+	if (!f)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid snapshot identifier: \"%s\"", idstr)));
+
+	/* get the size of the file so that we know how much memory we need */
+	if (fstat(fileno(f), &stat_buf))
+		elog(ERROR, "could not stat file \"%s\": %m", path);
+
+	/* and read the file into a palloc'd string */
+	filebuf = (char *) palloc(stat_buf.st_size + 1);
+	if (fread(filebuf, stat_buf.st_size, 1, f) != 1)
+		elog(ERROR, "could not read file \"%s\": %m", path);
+
+	filebuf[stat_buf.st_size] = '\0';
+
+	FreeFile(f);
+
+	parseVxidFromText("vxid:", &filebuf, path, &src_vxid);
+	src_pid = parseIntFromText("pid:", &filebuf, path);
+	/* we abuse parseXidFromText a bit here ... */
+	src_dbid = parseXidFromText("dbid:", &filebuf, path);
+	src_isolevel = parseIntFromText("iso:", &filebuf, path);
+	src_readonly = parseIntFromText("ro:", &filebuf, path);
+
+	xmin = parseXidFromText("xmin:", &filebuf, path);
+
+	return xmin;
 }
 
 /*
@@ -1879,6 +2074,134 @@ DeleteAllExportedSnapshotFiles(void)
 			ereport(LOG,
 					(errcode_for_file_access(),
 					 errmsg("could not remove file \"%s\": %m", buf)));
+	}
+
+	FreeDir(s_dir);
+}
+
+/*
+ * DeleteAllButRpBasedExportedSnapshotFiles
+ *		Similar to DeleteAllExportedSnapshotFiles, but do not remove snapshots
+ * 		with names starting with RP_SNAPSHOT_PREFIX.
+ *
+ * This should be called during database startup or crash recovery.
+ */
+void
+DeleteAllButRpBasedExportedSnapshotFiles(void)
+{
+	char		buf[MAXPGPATH + sizeof(SNAPSHOT_EXPORT_DIR)];
+	DIR		   *s_dir;
+	struct dirent *s_de;
+
+	/*
+	 * Problems in reading the directory, or unlinking files, are reported at
+	 * LOG level.  Since we're running in the startup process, ERROR level
+	 * would prevent database start, and it's not important enough for that.
+	 */
+	s_dir = AllocateDir(SNAPSHOT_EXPORT_DIR);
+
+	while ((s_de = ReadDirExtended(s_dir, SNAPSHOT_EXPORT_DIR, LOG)) != NULL)
+	{
+		if (strcmp(s_de->d_name, ".") == 0 ||
+			strcmp(s_de->d_name, "..") == 0)
+			continue;
+
+		/* ignore those starting with RP_SNAPSHOT_PREFIX */
+		if (strlen(s_de->d_name) >= strlen(RP_SNAPSHOT_PREFIX) && 
+				strncmp(s_de->d_name, RP_SNAPSHOT_PREFIX, strlen(RP_SNAPSHOT_PREFIX)) == 0)
+			continue;
+
+		snprintf(buf, sizeof(buf), SNAPSHOT_EXPORT_DIR "/%s", s_de->d_name);
+
+		if (unlink(buf) != 0)
+			ereport(LOG,
+					(errcode_for_file_access(),
+					 errmsg("could not remove file \"%s\": %m", buf)));
+	}
+
+	FreeDir(s_dir);
+}
+
+/*
+ * DeleteExportedSnapshotFiles
+ *		Similar to DeleteAllExportedSnapshotFiles(), just delete selected list of files.
+ *
+ * GPDB: this is called after invalidating restore point in case of snapshot conflict for hot standby.
+ */
+void
+DeleteExportedSnapshotFiles(List *files)
+{
+	char		buf[MAXPGPATH + sizeof(SNAPSHOT_EXPORT_DIR)];
+	DIR		   *s_dir;
+	struct dirent *s_de;
+
+	/*
+	 * Problems in reading the directory, or unlinking files, are reported at
+	 * LOG level.  Since we're running in the startup process, ERROR level
+	 * would prevent database start, and it's not important enough for that.
+	 */
+	s_dir = AllocateDir(SNAPSHOT_EXPORT_DIR);
+
+	while ((s_de = ReadDirExtended(s_dir, SNAPSHOT_EXPORT_DIR, LOG)) != NULL)
+	{
+		ListCell *lc;
+
+		foreach(lc, files)
+		{
+			if (strcmp(s_de->d_name, lfirst(lc)) != 0)
+				continue;
+
+			snprintf(buf, sizeof(buf), SNAPSHOT_EXPORT_DIR "/%s", s_de->d_name);
+
+			if (unlink(buf) != 0)
+				ereport(LOG,
+						(errcode_for_file_access(),
+						 errmsg("could not remove file \"%s\": %m", buf)));
+		}
+	}
+
+	FreeDir(s_dir);
+}
+
+/*
+ * ScanAndRememberAllSnapshots
+ *		Scan the pg_snapshots directory, remember all the snapshots that
+ * 		were generated via replaying restore points.
+ */
+void
+ScanAndRememberAllSnapshots(void)
+{
+	DIR			*s_dir;
+	struct dirent		*s_de;
+	RestorePointInfo 	rp;
+	bool 			found;
+
+	/*
+	 * Problems in reading the directory, or unlinking files, are reported at
+	 * LOG level.  Since we're running in the startup process, ERROR level
+	 * would prevent database start, and it's not important enough for that.
+	 */
+	s_dir = AllocateDir(SNAPSHOT_EXPORT_DIR);
+
+	while ((s_de = ReadDirExtended(s_dir, SNAPSHOT_EXPORT_DIR, LOG)) != NULL)
+	{
+		char rpname[MAXFNAMELEN];
+
+		if (strcmp(s_de->d_name, ".") == 0 ||
+			strcmp(s_de->d_name, "..") == 0)
+			continue;
+
+		/* ignore those NOT starting with RP_SNAPSHOT_PREFIX */
+		if (strlen(s_de->d_name) < strlen(RP_SNAPSHOT_PREFIX) ||
+				strncmp(s_de->d_name, RP_SNAPSHOT_PREFIX, strlen(RP_SNAPSHOT_PREFIX)) != 0)
+			continue;
+
+		memset(rpname, 0, MAXFNAMELEN);
+		strncpy(rpname, s_de->d_name + strlen(RP_SNAPSHOT_PREFIX), strlen(s_de->d_name) - strlen(RP_SNAPSHOT_PREFIX));
+		LWLockAcquire(RestorePointHashLock, LW_EXCLUSIVE);
+		rp = hash_search(restorePointHash, rpname, HASH_ENTER, &found);
+		rp->xmin = ImportXminFromSnapshot(s_de->d_name);
+		LWLockRelease(RestorePointHashLock);
 	}
 
 	FreeDir(s_dir);

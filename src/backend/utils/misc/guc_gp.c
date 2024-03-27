@@ -91,6 +91,8 @@ bool gpvars_check_gp_resqueue_priority_default_value(char **newval,
 static bool check_gp_default_storage_options(char **newval, void **extra, GucSource source);
 static void assign_gp_default_storage_options(const char *newval, void *extra);
 
+static bool check_gp_hot_standby_snapshot_mode(char **newval, void **extra, GucSource source);
+static void assign_gp_hot_standby_snapshot_mode(const char *newval, void *extra);
 
 static bool check_pljava_classpath_insecure(bool *newval, void **extra, GucSource source);
 static void assign_pljava_classpath_insecure(bool newval, void *extra);
@@ -417,6 +419,11 @@ int			gp_max_system_slices;
 /* System Information */
 static int	gp_server_version_num;
 static char *gp_server_version_string;
+
+/* Hot standby snapshot mode related settings */
+static char *gp_hot_standby_snapshot_mode_str = NULL;
+HotStandbySnapshotMode gp_hot_standby_snapshot_mode = HS_SNAPSHOT_UNSYNC;
+char *gp_hot_standby_snapshot_restore_point_name = NULL;
 
 /* Query Metrics */
 bool		gp_enable_query_metrics = false;
@@ -4774,6 +4781,28 @@ struct config_string ConfigureNamesString_gp[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"gp_hot_standby_snapshot_mode", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Sets the mode to use transaction snapshots for hot standby"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&gp_hot_standby_snapshot_mode_str,
+		HS_SNAPSHOT_UNSYNC_STR,
+		check_gp_hot_standby_snapshot_mode, assign_gp_hot_standby_snapshot_mode, NULL
+	},
+
+	{
+		{"gp_hot_standby_snapshot_restore_point_name", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Sets the restore point name which is used by hot standby for transaction isolation."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&gp_hot_standby_snapshot_restore_point_name,
+		NULL,
+		NULL, NULL, NULL
+	},
+
 #ifdef ENABLE_IC_PROXY
 	{
 		{"gp_interconnect_proxy_addresses", PGC_SIGHUP, GP_ARRAY_CONFIGURATION,
@@ -5345,6 +5374,38 @@ assign_gp_default_storage_options(const char *newval, void *extra)
 	StdRdOptions *newopts = (StdRdOptions *) extra;
 
 	setDefaultAOStorageOpts(newopts);
+}
+
+static bool
+check_gp_hot_standby_snapshot_mode(char **newval, void **extra, GucSource source)
+{
+	if (*newval == NULL || (strcmp(*newval, HS_SNAPSHOT_UNSYNC_STR) != 0 &&
+						strcmp(*newval, HS_SNAPSHOT_RESTOREPOINT_STR) != 0))
+	{
+		ereport(WARNING,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid gp_hot_standby_snapshot_mode value"),
+				 errhint("Use one of these: \"unsync\", \"restorepoint\".")));
+		return false;
+	}
+	return true;
+}
+
+static void
+assign_gp_hot_standby_snapshot_mode(const char *newval, void *extra)
+{
+	Assert(newval);
+
+	if (strcmp(newval, HS_SNAPSHOT_UNSYNC_STR) == 0)
+		gp_hot_standby_snapshot_mode = HS_SNAPSHOT_UNSYNC;
+	else if (strcmp(newval, HS_SNAPSHOT_RESTOREPOINT_STR) == 0)
+		gp_hot_standby_snapshot_mode = HS_SNAPSHOT_RESTOREPOINT;
+	else
+		/* option not valid, but we don't want panic either */
+		ereport(WARNING,
+			(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("invalid gp_hot_standby_snapshot_mode value"),
+				 errhint("Use one of these: \"unsync\", \"restorepoint\".")));
 }
 
 /*

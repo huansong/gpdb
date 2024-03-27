@@ -130,6 +130,12 @@ typedef enum
 	DTX_CONTEXT_LOCAL_ONLY,
 
 	/**
+	 * Indicating it is a hot standby node which is replaying restore point is
+	 * trying to create snapshot associated with a restore point.
+	 */
+	DTX_CONTEXT_REPLAY_RP,
+
+	/**
 	 * On QD: the process is currently part of a distributed
 	 *    transaction.  Whether or not the transaction has been started on a QE
 	 *    is not a part of the QD state -- that is tracked by assigning one of the
@@ -289,6 +295,8 @@ extern slock_t *shmGxidGenLock;
 extern DistributedTransactionId *shmCommittedGxidArray;
 extern volatile int *shmNumCommittedGxacts;
 
+extern char *shmLatestRpName;
+
 extern bool IsDtxRecoveryProcess(void);
 
 extern char *DtxStateToString(DtxState state);
@@ -319,6 +327,7 @@ extern void redoDistributedForgetCommitRecord(DistributedTransactionId gxid);
 extern void setupDtxTransaction(void);
 extern DtxState getCurrentDtxState(void);
 extern void bumpGxid(void);
+extern void LogLatestCompletedGxid(void);
 extern bool isCurrentDtxActivated(void);
 
 extern void sendDtxExplicitBegin(void);
