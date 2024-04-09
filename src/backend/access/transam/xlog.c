@@ -9602,7 +9602,25 @@ CreateCheckPoint(int flags)
 	 * recovery we don't need to write running xact data.
 	 */
 	if (!shutdown && XLogStandbyInfoActive())
+	{
 		LogStandbySnapshot();
+
+		if (IS_QUERY_DISPATCHER())
+		{
+			/*
+			 * GPDB: write latestCompletedGxid too, because the standby needs this 
+			 * value for creating distributed snapshot. The standby cannot rely on
+			 * the nextGxid value to set latestCompletedGxid during restart (which 
+			 * the primary does) because nextGxid was bumped in the checkpoint.
+			 */
+			LWLockAcquire(ProcArrayLock, LW_SHARED);
+			DistributedTransactionId lcgxid = ShmemVariableCache->latestCompletedGxid;
+			LWLockRelease(ProcArrayLock);
+			XLogBeginInsert();
+			XLogRegisterData((char *) (&lcgxid), sizeof(lcgxid));
+			recptr = XLogInsert(RM_XLOG_ID, XLOG_LATESTCOMPLETED_GXID);
+		}
+	}
 
 	SIMPLE_FAULT_INJECTOR("checkpoint_after_redo_calculated");
 
@@ -10691,6 +10709,18 @@ xlog_redo(XLogReaderState *record)
 		ShmemVariableCache->nextGxid = nextGxid;
 		ShmemVariableCache->GxidCount = 0;
 		SpinLockRelease(shmGxidGenLock);
+	}
+	else if (info == XLOG_LATESTCOMPLETED_GXID)
+	{
+		DistributedTransactionId gxid;
+
+		/* only QD logs it, so only QD should see it */
+		Assert(IS_QUERY_DISPATCHER());
+
+		gxid = *((DistributedTransactionId *) XLogRecGetData(record));
+		LWLockAcquire(ProcArrayLock, LW_EXCLUSIVE);
+		ShmemVariableCache->latestCompletedGxid = gxid;
+		LWLockRelease(ProcArrayLock);
 	}
 	else if (info == XLOG_NEXTRELFILENODE)
 	{
