@@ -629,6 +629,8 @@ PortalStart(Portal portal, ParamListInfo params,
 						needDistributedSnapshot = false;
 				}
 				
+				SIMPLE_FAULT_INJECTOR("select_before_qd_create_snapshot");
+
 				/* Must set snapshot before starting executor. */
 				if (snapshot)
 					PushActiveSnapshot(snapshot);

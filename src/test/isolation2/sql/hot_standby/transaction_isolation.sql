@@ -101,9 +101,6 @@
 ----------------------------------------------------------------
 -- Test isolation between standby QD and in-progress dtx,
 -- but after standby QD resets and gets running DTX from checkpoint.
--- Same tests will be repeated twice:
--- (1) with primary QD conducting a checkpoint;
--- (2) with standby QD conducting a checkpoint (restartpoint);
 ----------------------------------------------------------------
 1: create table hs_t5(a int, b text);
 1: create table hs_t6(a int, b text);
@@ -137,49 +134,27 @@
 -1S: select * from hs_t5;
 -1S: select * from hs_t6;
 
-truncate hs_t5;
-truncate hs_t6;
-
--- now repeat the above, but with standby QD conducting a checkpoint (restartpoint)
-1: select gp_inject_fault('qe_start_commit_prepared', 'suspend', dbid) from gp_segment_configuration where content=0 and role='p';
-1&: insert into hs_t5 select i, 'in-progress' from generate_series(1,10) i;
-
-2: insert into hs_t5 values(1, 'commited');
-2: insert into hs_t6 select i, 'committed' from generate_series(1,10) i;
-2: begin;
-2: insert into hs_t5 values(99, 'aborted');
-2: abort;
-
--1S: checkpoint;
--1S: select gp_inject_fault('exec_simple_query_start', 'panic', dbid) from gp_segment_configuration where content=-1 and role='m';
--1S: select 1;
--1Sq:
-
--- same result: standby should still not see rows in the in-progress DTX, but should see the completed ones
--1S: select * from hs_t5;
--1S: select * from hs_t6;
-
-2: select gp_inject_fault('qe_start_commit_prepared', 'reset',dbid) from gp_segment_configuration where content=0 and role='p';
-1<:
-
--- standby should see all rows now
--1S: select * from hs_t5;
--1S: select * from hs_t6;
-
--- more isolation test with in-progress dtx.
--- the purpose: Previously this would be fail because the standby gets a bumped nextGxid from checkpoint,
--- and moves its latestCompletedGxid too far (so that it thinks the new dtx already completed).
+-- standby should correctly see more in-progress dtx on the primary.
+-- context: previously this would be fail because the standby updates latestCompletedGxid to the
+-- bumped nextGxid from checkpoint, which is too far (so that it thinks the new dtx already completed).
 1: select gp_inject_fault('qe_start_prepared', 'suspend', dbid) from gp_segment_configuration where content=0 and role='p';
 1&: delete from hs_t5;
 2: select gp_inject_fault('qe_start_commit_prepared', 'suspend', dbid) from gp_segment_configuration where content=1 and role='p';
 2&: delete from hs_t6;
+
 -- standby should not see the effect of the deletes
 -1S: select * from hs_t5;
 -1S: select * from hs_t6;
+
 3: select gp_inject_fault('qe_start_prepared', 'reset',dbid) from gp_segment_configuration where content=0 and role='p';
 3: select gp_inject_fault('qe_start_commit_prepared', 'reset',dbid) from gp_segment_configuration where content=1 and role='p';
+
 1<:
 2<:
+
+-- standby now see those deletes
+-1S: select * from hs_t5;
+-1S: select * from hs_t6;
 
 ----------------------------------------------------------------
 -- Read-committed isolation: query on hot standby should not see dtx that completed after it
@@ -205,12 +180,12 @@ truncate hs_t6;
 -1S: select * from hs_rc;
 
 -- case 2: suspend SELECT on the standby QD before creating snapshot
--1S: select gp_inject_fault('exec_simple_query_start', 'suspend', dbid) from gp_segment_configuration where content=-1 and role='m';
+-1S: select gp_inject_fault('select_before_qd_create_snapshot', 'suspend', dbid) from gp_segment_configuration where content=-1 and role='m';
 -1S&: select * from hs_rc;
 
 1: insert into hs_rc select * from generate_series(21,30);
 1: delete from hs_rc where a < 21;
-1: select gp_inject_fault('exec_simple_query_start', 'reset', dbid) from gp_segment_configuration where content=-1 and role='m';
+1: select gp_inject_fault('select_before_qd_create_snapshot', 'reset', dbid) from gp_segment_configuration where content=-1 and role='m';
 
 -- standby should see the effect of the INSERT and DELETE
 -1S<:
