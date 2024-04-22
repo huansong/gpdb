@@ -563,7 +563,8 @@ redoDistributedForgetCommitRecord(DistributedTransactionId gxid)
 {
 	int			i;
 	bool 			is_hot_standby_qd = IS_HOT_STANDBY_QD();
-
+	
+	SIMPLE_FAULT_INJECTOR("redoDistributedForgetCommitRecord");
 	/* 
 	 * Only the startup process can be modifying shmNumCommittedGxacts
 	 * and shmCommittedGxidArray. So should be OK reading the value w/o lock.
