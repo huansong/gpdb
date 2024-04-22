@@ -511,7 +511,13 @@ heapgetpage(TableScanDesc sscan, BlockNumber page)
 
 	LockBuffer(buffer, BUFFER_LOCK_UNLOCK);
 
-	SIMPLE_FAULT_INJECTOR("heapgetpage_after_unlock_buffer");
+#ifdef FAULT_INJECTOR
+	FaultInjector_InjectFaultIfSet(
+								   "heapgetpage_after_unlock_buffer",
+								   DDLNotSpecified,
+								   "",	/* databaseName */
+								   RelationGetRelationName(scan->rs_base.rs_rd));	/* tableName */
+#endif
 
 	Assert(ntup <= MaxHeapTuplesPerPage);
 	scan->rs_ntuples = ntup;

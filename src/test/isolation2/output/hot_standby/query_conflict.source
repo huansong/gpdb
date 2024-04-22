@@ -11,7 +11,7 @@
 --     after the standby query is cancelled;
 -- 4. Run something on the standby transaction and see the conflict error, which
 --     in some cases it's ERROR, in others it's FATAL.
--- 5. Re-run the cancelled query on the standby, and it can proceed now.
+-- 5. Quit, establish a new connection, and re-run
 -- 6. Check the system view gp_stat_database_conflicts to see that the conflict
 --     has been recorded. Note that we print the max count among all segments
 --     to avoid flakiness.
@@ -25,7 +25,9 @@
  0   | 0   | 0   | 0   | 0   
 (1 row)
 
--- explicit lock
+---------------------------------------------------------------------
+-- Conflict with explicit lock
+---------------------------------------------------------------------
 create table hs_qc_lock(a int);
 CREATE TABLE
 insert into hs_qc_lock select * from generate_series(1,5);
@@ -70,7 +72,9 @@ server closed the connection unexpectedly
  1   
 (1 row)
 
--- lock through DDL
+---------------------------------------------------------------------
+-- Conflict with implicit lock
+---------------------------------------------------------------------
 -1S: begin;
 BEGIN
 -1S: select * from hs_qc_lock;
@@ -107,7 +111,9 @@ server closed the connection unexpectedly
  2   
 (1 row)
 
--- drop database
+---------------------------------------------------------------------
+-- Conflict with drop database
+---------------------------------------------------------------------
 1: create database hs_qc_dropdb;
 CREATE DATABASE
 -1Sq: ... <quitting>
@@ -127,7 +133,9 @@ server closed the connection unexpectedly
 -1Sq: ... <quitting>
 -- Stats aren't counted for database conflicts. See: pgstat_recv_recoveryconflict
 
--- VACUUM of rows that the standby might be still seeing
+---------------------------------------------------------------------
+-- Conflict with VACUUM (snapshot)
+---------------------------------------------------------------------
 1: create table hs_qc_vac1(a int);
 CREATE TABLE
 1: insert into hs_qc_vac1 select * from generate_series(1,10);
@@ -154,8 +162,11 @@ HINT:  In a moment you should be able to reconnect to the database and repeat yo
  1   
 (1 row)
 
+---------------------------------------------------------------------
+-- Conflict with VACUUM (buffer pin)
 -- VACUUM of page that the standby is still holding buffer pin on, the difference with
 -- the previous case is that here the deleted row is already invisible to the standby.
+---------------------------------------------------------------------
 1: create table hs_qc_vac2(a int);
 CREATE TABLE
 1: insert into hs_qc_vac2 values(2);
@@ -168,7 +179,7 @@ DELETE 1
 ---
 (0 rows)
 -- suspend the standby at where it just unlocks the buffer but still holds the pin
-1: select gp_inject_fault('heapgetpage_after_unlock_buffer', 'suspend',dbid) from gp_segment_configuration where content=0 and role='m';
+1: select gp_inject_fault('heapgetpage_after_unlock_buffer', 'suspend','','','hs_qc_vac2',1,1,0,dbid) from gp_segment_configuration where content=0 and role='m';
  gp_inject_fault 
 -----------------
  Success:        
@@ -204,11 +215,75 @@ ERROR:  canceling statement due to conflict with recovery  (seg0 slice1 127.0.1.
 DETAIL:  User was holding shared buffer pin for too long.
 -1Sq: ... <quitting>
 -- XXX: sometimes it shows the number is 2 instead of 1. It still validates the test but it would be nice to know why.
--1S: select max(confl_bufferpin) > 0from gp_stat_database_conflicts where datname = 'isolation2-hot-standby';
+-1S: select max(confl_bufferpin) > 0 from gp_stat_database_conflicts where datname = 'isolation2-hot-standby';
  ?column? 
 ----------
  t        
 (1 row)
+
+---------------------------------------------------------------------
+-- Conflict with drop (temp) tablespace
+-- Note: regular user tablespaces won't cause conflict on the standby since the standby cannot create any objects under them.
+---------------------------------------------------------------------
+-- create tablespace
+!\retcode mkdir -p @testtablespace@/hs_tablespace_directory;
+(exited with code 0)
+create tablespace hs_ts location '@testtablespace@/hs_tablespace_directory';
+CREATE TABLESPACE
+
+-- some prepartion on the primary
+create table hs_ts_foo (i int, j int) distributed by(i);
+CREATE TABLE
+insert into hs_ts_foo select i, i from generate_series(1,800000)i;
+INSERT 0 800000
+analyze hs_ts_foo;
+ANALYZE
+
+-- make sure the standby won't run too fast and delete the temp files
+select gp_inject_fault('after_open_temp_file', 'suspend',dbid) from gp_segment_configuration where content=1 and role='m';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+
+-- on the standby, run some query that requires workfile, this example is taken
+-- from regress/temp_tablespaces test
+-1S: set temp_tablespaces = hs_ts;
+SET
+-1S: begin;
+BEGIN
+-1S&: with a1 as (select * from hs_ts_foo), a2 as (select * from hs_ts_foo) select a1.i xx from a1 inner join a2 on a2.i = a1.i union all select count(a1.i) from a1 inner join a2 on a2.i = a1.i order by xx limit 5;  <waiting ...>
+
+-- drop tablespace, should see conflict on the hot standby
+drop tablespace hs_ts;
+DROP TABLESPACE
+select gp_inject_fault('after_open_temp_file', 'reset',dbid) from gp_segment_configuration where content=1 and role='m';
+ gp_inject_fault 
+-----------------
+ Success:        
+(1 row)
+-1S<:  <... completed>
+ERROR:  canceling statement due to conflict with recovery  (seg1 slice3 127.0.1.1:7006 pid=990)
+DETAIL:  User was or might have been using tablespace that must be dropped.
+-1Sq: ... <quitting>
+
+-- conflict has been recorded
+-1S: select max(confl_tablespace) from gp_stat_database_conflicts where datname = 'isolation2-hot-standby';
+ max 
+-----
+ 1   
+(1 row)
+
+-- cleanup
+!\retcode rm -rf @testtablespace@/hs_tablespace_directory;
+GP_IGNORE:-- start_ignore
+GP_IGNORE:
+GP_IGNORE:-- end_ignore
+(exited with code 0)
+-- Do one checkpoint. Otherwise if server restarts w/o doing checkpoint (some subsequent
+-- tests might do that), the server would complain it cannot find the directory for hs_ts.
+checkpoint;
+CHECKPOINT
 
 ----------------------------------------------------------------
 -- Additional case to show that distributed transaction is not taken into
@@ -240,7 +315,7 @@ DELETE 10
 VACUUM
 -- The standby query in theory should be cancelled, because it started before
 -- the VACUUM. But in reality, it doesn't, and sees 0 rows, because the QE for the
--- SELECT below will create more recent local snapshot that does not conflit with
+-- SELECT below will create more recent local snapshot that does not conflict with
 -- the VACUUM, and sees the result of DELETE+VACUUM.
 -- Note: with the help of restore point, we would be able to create local snapshot
 -- precisely corresponding to each distributed snapshot, and do conflict detection accordingly.
@@ -348,6 +423,20 @@ BEGIN
 DELETE 10
 1: vacuum hs_qc_guc2;
 VACUUM
+
+-- showing all rows are deleted but not vacuumed
+1: select count(*) from hs_qc_guc2;
+ count 
+-------
+ 0     
+(1 row)
+1: set gp_select_invisible to on;
+SET
+1: select count(*) from hs_qc_guc2;
+ count 
+-------
+ 10    
+(1 row)
 
 -- hot standby can still query the table
 -1S: select count(*) from hs_qc_guc2;
