@@ -116,7 +116,6 @@ select gp_inject_fault('after_open_temp_file', 'suspend',dbid) from gp_segment_c
 -- on the standby, run some query that requires workfile, this example is taken
 -- from regress/temp_tablespaces test
 -1S: set temp_tablespaces = hs_ts;
--1S: set default_tablespace = hs_ts;
 -1S: set statement_mem='2MB';
 -1S&: with a1 as (select * from hs_ts_foo), a2 as (select * from hs_ts_foo) select a1.i xx from a1 inner join a2 on a2.i = a1.i union all select count(a1.i) from a1 inner join a2 on a2.i = a1.i order by xx limit 5;
 
