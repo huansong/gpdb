@@ -46,3 +46,8 @@ SELECT
   'workmem_wanted_lines', (SELECT COUNT(*) FROM query_plan WHERE et like '%Work_mem wanted: %');
 end;
 $$ language plpgsql;
+
+-- start_ignore
+\! gpconfig -c hot_standby -v on;
+\! gpstop -ar;
+-- end_ignore
