@@ -301,6 +301,8 @@ ResolveRecoveryConflictWithVirtualXIDs(VirtualTransactionId *waitlist,
 				 */
 				if (pid != 0)
 					pg_usleep(5000L);
+				if (reason == PROCSIG_RECOVERY_CONFLICT_TABLESPACE && pid != 0)
+					elog(LOG, "TEST: trying to resolve tablespace conflict for pid %d", pid);
 			}
 		}
 
