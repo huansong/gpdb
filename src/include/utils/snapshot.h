@@ -15,6 +15,7 @@
 
 #include "access/htup.h"
 #include "access/xlogdefs.h"
+#include "access/xlog_internal.h" /* MAXFNAMELEN */
 #include "datatype/timestamp.h"
 #include "lib/pairingheap.h"
 #include "storage/buf.h"
@@ -186,6 +187,9 @@ typedef struct SnapshotData
 	bool		takenDuringRecovery;	/* recovery-shaped snapshot? */
 	bool		copied;			/* false if it's a static snapshot */
 	bool		haveDistribSnapshot; /* True if this snapshot is distributed. */
+	bool		isRestorePointBased;
+	/* Restore point name for this snapshot */
+	char 				rpname[MAXFNAMELEN];
 
 	CommandId	curcid;			/* in my xact, CID < curcid are visible */
 

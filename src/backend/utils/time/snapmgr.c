@@ -358,7 +358,7 @@ static Snapshot GetRestorePointBasedSnapshot(void)
 	}
 	else if (IS_HOT_STANDBY_QE())
 	{
-		strcpy(rpname, QEDtxContextInfo.distributedSnapshot.rpname);
+		strcpy(rpname, QEDtxContextInfo.rpname);
 	}
 
 	/* Now find the restore point hash entry, and import the snapshot */
@@ -381,16 +381,20 @@ static Snapshot GetRestorePointBasedSnapshot(void)
 
 	/* For QD, populate the restore point name. */
 	if (IS_HOT_STANDBY_QD())
-		strcpy(CurrentSnapshot->distribSnapshotWithLocalMapping.ds.rpname, rpname);
+	{
+		strncpy(CurrentSnapshot->rpname, rpname, MAXFNAMELEN);
+		CurrentSnapshot->isRestorePointBased = true;
+		CurrentSnapshot->haveDistribSnapshot = false;
+	}
 	/*
 	 * For QE, the previously exported snapshot does not include dtx
 	 * snapshot. Copy the one dispatched from QD.
 	 */
 	else if (IS_HOT_STANDBY_QE())
 	{
-		DistributedSnapshot_Copy(&CurrentSnapshot->distribSnapshotWithLocalMapping.ds,
-								&QEDtxContextInfo.distributedSnapshot);
-		CurrentSnapshot->haveDistribSnapshot = true;
+		strncpy(CurrentSnapshot->rpname, rpname, MAXFNAMELEN);
+		CurrentSnapshot->isRestorePointBased = true;
+		CurrentSnapshot->haveDistribSnapshot = false;
 	}
 
 	return CurrentSnapshot;
@@ -925,6 +929,9 @@ CopySnapshot(Snapshot snapshot)
 					sizeof(TransactionId));
 		}
 	}
+
+	if (snapshot->isRestorePointBased)
+		strncpy(newsnap->rpname, snapshot->rpname, MAXFNAMELEN);
 
 	return newsnap;
 }

@@ -1677,6 +1677,7 @@ SnapshotResetDslm(Snapshot snapshot)
 	DistributedSnapshotWithLocalMapping *dslm;
 
 	snapshot->haveDistribSnapshot = false;
+	snapshot->isRestorePointBased = false;
 
 	dslm = &snapshot->distribSnapshotWithLocalMapping;
 	dslm->currentLocalXidsCount = 0;
@@ -2286,11 +2287,19 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 		 distributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT ||
 		 distributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON ||
 		 distributedTransactionContext == DTX_CONTEXT_QE_READER) &&
-		QEDtxContextInfo.haveDistributedSnapshot &&
+		(QEDtxContextInfo.haveDistributedSnapshot || QEDtxContextInfo.isRestorePointBased) &&
 		!Debug_disable_distributed_snapshot)
 	{
-		DistributedSnapshot_Copy(&snapshot->distribSnapshotWithLocalMapping.ds, &QEDtxContextInfo.distributedSnapshot);
-		snapshot->haveDistribSnapshot = true;
+		if (QEDtxContextInfo.haveDistributedSnapshot)
+		{
+			DistributedSnapshot_Copy(&snapshot->distribSnapshotWithLocalMapping.ds, &QEDtxContextInfo.distributedSnapshot);
+			snapshot->haveDistribSnapshot = true;
+		}
+		else if (QEDtxContextInfo.isRestorePointBased)
+		{
+			strncpy(snapshot->rpname, QEDtxContextInfo.rpname, MAXFNAMELEN);
+			snapshot->isRestorePointBased = true;
+		}
 	}
 
 	/* XXX: what to do with this?*/
@@ -2509,13 +2518,11 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 
 	/*
 	 * GP: QD takes a distributed snapshot iff QD not in retry phase and the
-	 * query needs distributed snapshot. The exception is hot standby startup
-	 * process which would create snapshot at the time of replaying restore point.
+	 * query needs distributed snapshot.
 	 */
-	if ((distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE 
+	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE 
 			&& !Debug_disable_distributed_snapshot 
 			&& needDistributedSnapshot)
-		|| (distributedTransactionContext == DTX_CONTEXT_REPLAY_RP))
 	{
 		CreateDistributedSnapshot(ds);
 		snapshot->haveDistribSnapshot = true;

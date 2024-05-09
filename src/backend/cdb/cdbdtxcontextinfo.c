@@ -80,6 +80,13 @@ DtxContextInfo_CreateOnCoordinator(DtxContextInfo *dtxContextInfo, bool inCursor
 		dtxContextInfo->haveDistributedSnapshot = true;
 	}
 
+	dtxContextInfo->isRestorePointBased = false;
+	if (snapshot && snapshot->isRestorePointBased)
+	{
+		strncpy(&dtxContextInfo->rpname[0], &snapshot->rpname[0], MAXFNAMELEN);
+		dtxContextInfo->isRestorePointBased = true;
+	}
+
 	dtxContextInfo->distributedTxnOptions = txnOptions;
 
 	if (DEBUG5 >= log_min_messages || Debug_print_full_dtm)
@@ -137,6 +144,7 @@ DtxContextInfo_SerializeSize(DtxContextInfo *dtxContextInfo)
 	size += sizeof(uint32);		/* segmateSync */
 	size += sizeof(uint32);		/* nestingLevel */
 	size += sizeof(bool);		/* haveDistributedSnapshot */
+	size += sizeof(bool);		/* isRestorePointBased */
 	size += sizeof(bool);		/* cursorContext */
 
 	if (dtxContextInfo->haveDistributedSnapshot)
@@ -144,6 +152,9 @@ DtxContextInfo_SerializeSize(DtxContextInfo *dtxContextInfo)
 		size += DistributedSnapshot_SerializeSize(
 												  &dtxContextInfo->distributedSnapshot);
 	}
+
+	if (dtxContextInfo->isRestorePointBased)
+		size += MAXFNAMELEN;
 
 	size += sizeof(int);		/* distributedTxnOptions */
 
@@ -188,12 +199,21 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 	memcpy(p, &dtxContextInfo->haveDistributedSnapshot, sizeof(bool));
 	p += sizeof(bool);
 
+	memcpy(p, &dtxContextInfo->isRestorePointBased, sizeof(bool));
+	p += sizeof(bool);
+
 	memcpy(p, &dtxContextInfo->cursorContext, sizeof(bool));
 	p += sizeof(bool);
 
 	if (dtxContextInfo->haveDistributedSnapshot)
 	{
 		p += DistributedSnapshot_Serialize(ds, p);
+	}
+
+	if (dtxContextInfo->isRestorePointBased)
+	{
+		memcpy(p, &dtxContextInfo->rpname[0], MAXFNAMELEN);
+		p += MAXFNAMELEN;
 	}
 
 	memcpy(p, &dtxContextInfo->distributedTxnOptions, sizeof(int));
@@ -245,6 +265,7 @@ DtxContextInfo_Reset(DtxContextInfo *dtxContextInfo)
 	dtxContextInfo->nestingLevel = 0;
 
 	dtxContextInfo->haveDistributedSnapshot = false;
+	dtxContextInfo->isRestorePointBased = false;
 
 	DistributedSnapshot_Reset(&dtxContextInfo->distributedSnapshot);
 
@@ -265,11 +286,15 @@ DtxContextInfo_Copy(
 	target->curcid = source->curcid;
 
 	target->haveDistributedSnapshot = source->haveDistributedSnapshot;
+	target->isRestorePointBased = source->isRestorePointBased;
 	target->cursorContext = source->cursorContext;
 
 	if (source->haveDistributedSnapshot)
 		DistributedSnapshot_Copy(&target->distributedSnapshot,
 								 &source->distributedSnapshot);
+
+	if (source->isRestorePointBased)
+		strncpy(&target->rpname[0], &source->rpname[0], 64);
 
 	target->distributedTxnOptions = source->distributedTxnOptions;
 
@@ -330,6 +355,9 @@ DtxContextInfo_Deserialize(const char *serializedDtxContextInfo,
 		memcpy(&dtxContextInfo->haveDistributedSnapshot, p, sizeof(bool));
 		p += sizeof(bool);
 
+		memcpy(&dtxContextInfo->isRestorePointBased, p, sizeof(bool));
+		p += sizeof(bool);
+
 		memcpy(&dtxContextInfo->cursorContext, p, sizeof(bool));
 		p += sizeof(bool);
 
@@ -347,6 +375,12 @@ DtxContextInfo_Deserialize(const char *serializedDtxContextInfo,
 		{
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),
 				 "DtxContextInfo_Deserialize no distributed snapshot");
+		}
+
+		if (dtxContextInfo->isRestorePointBased)
+		{
+			memcpy(&dtxContextInfo->rpname[0], p, 64);
+			p += 64;
 		}
 
 		memcpy(&dtxContextInfo->distributedTxnOptions, p, sizeof(int));

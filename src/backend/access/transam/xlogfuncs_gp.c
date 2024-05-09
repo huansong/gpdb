@@ -83,15 +83,6 @@ gp_create_restore_point(PG_FUNCTION_ARGS)
 			psprintf("SELECT pg_catalog.pg_create_restore_point(%s)", quote_literal_cstr(restore_name_str));
 
 		/*
-		 * GPDB: log latestcompletedgxid before the restore point, because the standby
-		 * needs this value for creating a distributed snapshot corresponding to this RP.
-		 * Not putting it inside the TwoPhaseCommitLock path to avoid any deadlock. There
-		 * might be another 2PC being committed after we log the value, but that's OK - 
-		 * the standby would replay that 2PC and update latestCompletedGxid anyway.
-		 */
-		LogLatestCompletedGxid();
-
-		/*
 		 * Acquire TwophaseCommitLock in EXCLUSIVE mode. This is to ensure
 		 * cluster-wide restore point consistency by blocking distributed
 		 * commit prepared broadcasts from concurrent twophase transactions

@@ -327,7 +327,6 @@ extern void redoDistributedForgetCommitRecord(DistributedTransactionId gxid);
 extern void setupDtxTransaction(void);
 extern DtxState getCurrentDtxState(void);
 extern void bumpGxid(void);
-extern void LogLatestCompletedGxid(void);
 extern bool isCurrentDtxActivated(void);
 
 extern void sendDtxExplicitBegin(void);

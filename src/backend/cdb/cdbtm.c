@@ -261,23 +261,6 @@ bumpGxid()
 	LWLockRelease(GxidBumpLock);
 }
 
-void
-LogLatestCompletedGxid(void)
-{
-	XLogRecPtr		recptr;
-	DistributedTransactionId lcgxid;
-
-	/* latestCompletedGxid can't be modified until we log it */
-	LWLockAcquire(ProcArrayLock, LW_SHARED);
-
-	lcgxid = ShmemVariableCache->latestCompletedGxid;
-	XLogBeginInsert();
-	XLogRegisterData((char *) (&lcgxid), sizeof(lcgxid));
-	recptr = XLogInsert(RM_XLOG_ID, XLOG_LATESTCOMPLETED_GXID);
-
-	LWLockRelease(ProcArrayLock);
-}
-
 static void
 currentDtxActivate(void)
 {

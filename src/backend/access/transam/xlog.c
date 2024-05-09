@@ -9619,14 +9619,23 @@ CreateCheckPoint(int flags)
 	{
 		LogStandbySnapshot();
 
-		/*
-		 * GPDB: write latestCompletedGxid too, because the standby needs this 
-		 * value for creating distributed snapshot. The standby cannot rely on
-		 * the nextGxid value to set latestCompletedGxid during restart (which 
-		 * the primary does) because nextGxid was bumped in the checkpoint.
-		 */
 		if (IS_QUERY_DISPATCHER())
-			LogLatestCompletedGxid();
+		{
+			/*
+			 * GPDB: write latestCompletedGxid too, because the standby needs this 
+			 * value for creating distributed snapshot. The standby cannot rely on
+			 * the nextGxid value to set latestCompletedGxid during restart (which 
+			 * the primary does) because nextGxid was bumped in the checkpoint.
+			 */
+			DistributedTransactionId lcgxid;
+
+			LWLockAcquire(ProcArrayLock, LW_SHARED);
+			lcgxid = ShmemVariableCache->latestCompletedGxid;
+			LWLockRelease(ProcArrayLock);
+			XLogBeginInsert();
+			XLogRegisterData((char *) (&lcgxid), sizeof(lcgxid));
+			recptr = XLogInsert(RM_XLOG_ID, XLOG_LATESTCOMPLETED_GXID);
+		}
 	}
 
 	SIMPLE_FAULT_INJECTOR("checkpoint_after_redo_calculated");
@@ -10990,6 +10999,7 @@ xlog_redo(XLogReaderState *record)
 
 			/* XXX : should we have a dedicated memory context for these? */
 			snapshot = GetTransactionSnapshot();
+			strncpy(snapshot->rpname, rpname, MAXFNAMELEN);
 			ExportSnapshotWithName(snapshot, snapshotname);
 
 			DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
