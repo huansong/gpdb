@@ -72,20 +72,17 @@ DtxContextInfo_CreateOnCoordinator(DtxContextInfo *dtxContextInfo, bool inCursor
 		 dtxContextInfo->distributedXid, dtxContextInfo->nestingLevel,
 		 dtxContextInfo->segmateSync, syncCount);
 
-	dtxContextInfo->haveDistributedSnapshot = false;
-	if (snapshot && snapshot->haveDistribSnapshot)
+	if (snapshot)
 	{
-		DistributedSnapshot_Copy(&dtxContextInfo->distributedSnapshot,
-								 &snapshot->distribSnapshotWithLocalMapping.ds);
-		dtxContextInfo->haveDistributedSnapshot = true;
+		dtxContextInfo->snapshotMode = snapshot->snapshotMode;
+		if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
+			DistributedSnapshot_Copy(&dtxContextInfo->distributedSnapshot,
+									 &snapshot->distribSnapshotWithLocalMapping.ds);
+		else if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_RESTOREPOINT)
+			strncpy(&dtxContextInfo->rpname[0], &snapshot->rpname[0], MAXFNAMELEN);
 	}
-
-	dtxContextInfo->isRestorePointBased = false;
-	if (snapshot && snapshot->isRestorePointBased)
-	{
-		strncpy(&dtxContextInfo->rpname[0], &snapshot->rpname[0], MAXFNAMELEN);
-		dtxContextInfo->isRestorePointBased = true;
-	}
+	else
+		dtxContextInfo->snapshotMode = GP_SNAPSHOT_MODE_LOCAL;
 
 	dtxContextInfo->distributedTxnOptions = txnOptions;
 
@@ -143,17 +140,14 @@ DtxContextInfo_SerializeSize(DtxContextInfo *dtxContextInfo)
 
 	size += sizeof(uint32);		/* segmateSync */
 	size += sizeof(uint32);		/* nestingLevel */
-	size += sizeof(bool);		/* haveDistributedSnapshot */
-	size += sizeof(bool);		/* isRestorePointBased */
+	size += sizeof(GpSnapshotMode);		/* snapshotMode */
 	size += sizeof(bool);		/* cursorContext */
 
-	if (dtxContextInfo->haveDistributedSnapshot)
+	if (dtxContextInfo->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 	{
 		size += DistributedSnapshot_SerializeSize(
 												  &dtxContextInfo->distributedSnapshot);
-	}
-
-	if (dtxContextInfo->isRestorePointBased)
+	} else if (dtxContextInfo->snapshotMode == GP_SNAPSHOT_MODE_RESTOREPOINT)
 		size += MAXFNAMELEN;
 
 	size += sizeof(int);		/* distributedTxnOptions */
@@ -196,21 +190,17 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 	memcpy(p, &dtxContextInfo->nestingLevel, sizeof(uint32));
 	p += sizeof(uint32);
 
-	memcpy(p, &dtxContextInfo->haveDistributedSnapshot, sizeof(bool));
-	p += sizeof(bool);
-
-	memcpy(p, &dtxContextInfo->isRestorePointBased, sizeof(bool));
-	p += sizeof(bool);
+	memcpy(p, &dtxContextInfo->snapshotMode, sizeof(GpSnapshotMode));
+	p += sizeof(GpSnapshotMode);
 
 	memcpy(p, &dtxContextInfo->cursorContext, sizeof(bool));
 	p += sizeof(bool);
 
-	if (dtxContextInfo->haveDistributedSnapshot)
+	if (dtxContextInfo->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 	{
 		p += DistributedSnapshot_Serialize(ds, p);
 	}
-
-	if (dtxContextInfo->isRestorePointBased)
+	else if (dtxContextInfo->snapshotMode == GP_SNAPSHOT_MODE_RESTOREPOINT)
 	{
 		memcpy(p, &dtxContextInfo->rpname[0], MAXFNAMELEN);
 		p += MAXFNAMELEN;
@@ -229,7 +219,7 @@ DtxContextInfo_Serialize(char *buffer, DtxContextInfo *dtxContextInfo)
 			 dtxContextInfo->distributedXid,
 			 dtxContextInfo->curcid);
 
-		if (dtxContextInfo->haveDistributedSnapshot)
+		if (dtxContextInfo->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 		{
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),
 				 "distributedSnapshotHeader (xminAllDistributedSnapshots "UINT64_FORMAT", xmin = "UINT64_FORMAT", xmax = "UINT64_FORMAT", count = %d)",
@@ -264,8 +254,7 @@ DtxContextInfo_Reset(DtxContextInfo *dtxContextInfo)
 	dtxContextInfo->segmateSync = 0;
 	dtxContextInfo->nestingLevel = 0;
 
-	dtxContextInfo->haveDistributedSnapshot = false;
-	dtxContextInfo->isRestorePointBased = false;
+	dtxContextInfo->snapshotMode = GP_SNAPSHOT_MODE_LOCAL;
 
 	DistributedSnapshot_Reset(&dtxContextInfo->distributedSnapshot);
 
@@ -285,15 +274,13 @@ DtxContextInfo_Copy(
 
 	target->curcid = source->curcid;
 
-	target->haveDistributedSnapshot = source->haveDistributedSnapshot;
-	target->isRestorePointBased = source->isRestorePointBased;
+	target->snapshotMode = source->snapshotMode;
 	target->cursorContext = source->cursorContext;
 
-	if (source->haveDistributedSnapshot)
+	if (source->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 		DistributedSnapshot_Copy(&target->distributedSnapshot,
 								 &source->distributedSnapshot);
-
-	if (source->isRestorePointBased)
+	else if (source->snapshotMode == GP_SNAPSHOT_MODE_RESTOREPOINT)
 		strncpy(&target->rpname[0], &source->rpname[0], 64);
 
 	target->distributedTxnOptions = source->distributedTxnOptions;
@@ -304,7 +291,7 @@ DtxContextInfo_Copy(
 		 target->distributedXid,
 		 target->curcid);
 
-	if (target->haveDistributedSnapshot)
+	if (target->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 		elog((Debug_print_full_dtm ? LOG : DEBUG5),
 			 "distributed snapshot {xminAllDistributedSnapshots "UINT64_FORMAT", snapshot id %d, "
 			 "xmin "UINT64_FORMAT", count %d, xmax "UINT64_FORMAT"}",
@@ -352,11 +339,8 @@ DtxContextInfo_Deserialize(const char *serializedDtxContextInfo,
 		p += sizeof(uint32);
 		memcpy(&dtxContextInfo->nestingLevel, p, sizeof(uint32));
 		p += sizeof(uint32);
-		memcpy(&dtxContextInfo->haveDistributedSnapshot, p, sizeof(bool));
-		p += sizeof(bool);
-
-		memcpy(&dtxContextInfo->isRestorePointBased, p, sizeof(bool));
-		p += sizeof(bool);
+		memcpy(&dtxContextInfo->snapshotMode, p, sizeof(GpSnapshotMode));
+		p += sizeof(GpSnapshotMode);
 
 		memcpy(&dtxContextInfo->cursorContext, p, sizeof(bool));
 		p += sizeof(bool);
@@ -367,20 +351,19 @@ DtxContextInfo_Deserialize(const char *serializedDtxContextInfo,
 			 dtxContextInfo->curcid, dtxContextInfo->nestingLevel,
 			 dtxContextInfo->segmateSync, (Gp_is_writer ? "WRITER" : "READER"));
 
-		if (dtxContextInfo->haveDistributedSnapshot)
+		if (dtxContextInfo->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 		{
 			p += DistributedSnapshot_Deserialize(p, ds);
+		}
+		else if (dtxContextInfo->snapshotMode == GP_SNAPSHOT_MODE_RESTOREPOINT)
+		{
+			memcpy(&dtxContextInfo->rpname[0], p, 64);
+			p += 64;
 		}
 		else
 		{
 			elog((Debug_print_full_dtm ? LOG : DEBUG5),
 				 "DtxContextInfo_Deserialize no distributed snapshot");
-		}
-
-		if (dtxContextInfo->isRestorePointBased)
-		{
-			memcpy(&dtxContextInfo->rpname[0], p, 64);
-			p += 64;
 		}
 
 		memcpy(&dtxContextInfo->distributedTxnOptions, p, sizeof(int));
@@ -392,7 +375,7 @@ DtxContextInfo_Deserialize(const char *serializedDtxContextInfo,
 				 "DtxContextInfo_Deserialize distributedXid = "UINT64_FORMAT,
 				 dtxContextInfo->distributedXid);
 
-			if (dtxContextInfo->haveDistributedSnapshot)
+			if (dtxContextInfo->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 			{
 				elog((Debug_print_full_dtm ? LOG : DEBUG5),
 					 "distributedSnapshotHeader (xminAllDistributedSnapshots "UINT64_FORMAT", xmin = "UINT64_FORMAT", xmax = "UINT64_FORMAT", count = %d)",

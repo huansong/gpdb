@@ -17,14 +17,13 @@
 #include "access/xlog_internal.h" /* MAXFNAMELEN */
 #include "utils/snapshot.h"
 
-#define DtxContextInfo_StaticInit {InvalidDistributedTransactionId,false,false,false,DistributedSnapshot_StaticInit,"",0,0,0,0}
+#define DtxContextInfo_StaticInit {InvalidDistributedTransactionId,GP_SNAPSHOT_MODE_LOCAL,false,DistributedSnapshot_StaticInit,"",0,0,0,0}
 
 typedef struct DtxContextInfo
 {
 	DistributedTransactionId 		distributedXid;
 	
-	bool							haveDistributedSnapshot;
-	bool							isRestorePointBased;
+	GpSnapshotMode						snapshotMode;
 	bool							cursorContext;
 	
 	DistributedSnapshot		 		distributedSnapshot;

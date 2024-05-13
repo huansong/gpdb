@@ -1738,7 +1738,7 @@ setupQEDtxContext(DtxContextInfo *dtxContextInfo)
 	needDtx = isMppTxOptions_NeedDtx(txnOptions);
 	explicitBegin = isMppTxOptions_ExplicitBegin(txnOptions);
 
-	haveDistributedSnapshot = dtxContextInfo->haveDistributedSnapshot;
+	haveDistributedSnapshot = dtxContextInfo->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED;
 	isSharedLocalSnapshotSlotPresent = (SharedLocalSnapshotSlot != NULL);
 
 	if (DEBUG5 >= log_min_messages || Debug_print_full_dtm)

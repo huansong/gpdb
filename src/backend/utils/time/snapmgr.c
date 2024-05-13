@@ -383,8 +383,7 @@ static Snapshot GetRestorePointBasedSnapshot(void)
 	if (IS_HOT_STANDBY_QD())
 	{
 		strncpy(CurrentSnapshot->rpname, rpname, MAXFNAMELEN);
-		CurrentSnapshot->isRestorePointBased = true;
-		CurrentSnapshot->haveDistribSnapshot = false;
+		CurrentSnapshot->snapshotMode = GP_SNAPSHOT_MODE_RESTOREPOINT;
 	}
 	/*
 	 * For QE, the previously exported snapshot does not include dtx
@@ -393,8 +392,7 @@ static Snapshot GetRestorePointBasedSnapshot(void)
 	else if (IS_HOT_STANDBY_QE())
 	{
 		strncpy(CurrentSnapshot->rpname, rpname, MAXFNAMELEN);
-		CurrentSnapshot->isRestorePointBased = true;
-		CurrentSnapshot->haveDistribSnapshot = false;
+		CurrentSnapshot->snapshotMode = GP_SNAPSHOT_MODE_RESTOREPOINT;
 	}
 
 	return CurrentSnapshot;
@@ -742,7 +740,7 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 	 * distributed snapshot from being created in GetSnapshotData() and ensures
 	 * that we can use the distributed snapshot from the source snapshot below.
 	 */
-	if (sourcesnap->haveDistribSnapshot)
+	if (sourcesnap->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 		CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData, DTX_CONTEXT_LOCAL_ONLY);
 	else
 		CurrentSnapshot = GetSnapshotData(&CurrentSnapshotData, DistributedTransactionContext);
@@ -767,9 +765,9 @@ SetTransactionSnapshot(Snapshot sourcesnap, VirtualTransactionId *sourcevxid,
 	/*
 	 * GPDB: Copy over distributed snapshot if present.
 	 */
-	if (sourcesnap->haveDistribSnapshot)
+	if (sourcesnap->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 	{
-		CurrentSnapshot->haveDistribSnapshot = true;
+		CurrentSnapshot->snapshotMode = GP_SNAPSHOT_MODE_DISTRIBUTED;
 		DistributedSnapshot_Copy(&CurrentSnapshot->distribSnapshotWithLocalMapping.ds,
 								 &sourcesnap->distribSnapshotWithLocalMapping.ds);
 	}
@@ -857,7 +855,7 @@ CopySnapshot(Snapshot snapshot)
 		size += snapshot->subxcnt * sizeof(TransactionId);
 	dslmoff = dsoff = size;
 
-	if (snapshot->haveDistribSnapshot &&
+	if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED &&
 		snapshot->distribSnapshotWithLocalMapping.ds.count > 0)
 	{
 		size += snapshot->distribSnapshotWithLocalMapping.ds.count *
@@ -905,7 +903,7 @@ CopySnapshot(Snapshot snapshot)
 
 	newsnap->distribSnapshotWithLocalMapping.ds.inProgressXidArray = NULL;
 	newsnap->distribSnapshotWithLocalMapping.inProgressMappedLocalXids = NULL;
-	if (snapshot->haveDistribSnapshot &&
+	if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED &&
 		snapshot->distribSnapshotWithLocalMapping.ds.count > 0)
 	{
 		newsnap->distribSnapshotWithLocalMapping.ds.inProgressXidArray =
@@ -930,7 +928,7 @@ CopySnapshot(Snapshot snapshot)
 		}
 	}
 
-	if (snapshot->isRestorePointBased)
+	if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_RESTOREPOINT)
 		strncpy(newsnap->rpname, snapshot->rpname, MAXFNAMELEN);
 
 	return newsnap;
@@ -1587,7 +1585,7 @@ ExportSnapshotWithName(Snapshot snapshot, const char *snapshot_name)
 	/*
 	 * GPDB: Serialize distributed snapshot if present.
 	 */
-	if (snapshot->haveDistribSnapshot)
+	if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 	{
 		distributed_snapshot = &snapshot->distribSnapshotWithLocalMapping.ds;
 		appendStringInfo(&buf, "dsxminall:%lu\n", distributed_snapshot->xminAllDistributedSnapshots);
@@ -1934,7 +1932,7 @@ ImportSnapshot(const char *idstr)
 		distributed_snapshot->inProgressXidArray = (DistributedTransactionId *) palloc(dxcnt * sizeof(DistributedTransactionId));
 		for (i = 0; i < dxcnt; i++)
 			distributed_snapshot->inProgressXidArray[i] = parseDistributedXidFromText("dsxip:", &filebuf, path);
-		snapshot.haveDistribSnapshot = true;
+		snapshot.snapshotMode = GP_SNAPSHOT_MODE_DISTRIBUTED;
 	}
 
 	/*
@@ -2790,7 +2788,7 @@ XidInMVCCSnapshot(TransactionId xid, Snapshot snapshot,
 	 * In the QD, the distributed transactions become visible at the same time
 	 * as the corresponding local ones, so we can rely on the local XIDs.
 	 */
-	if (snapshot->haveDistribSnapshot && !distributedSnapshotIgnore &&
+	if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED && !distributedSnapshotIgnore &&
 		!IS_QUERY_DISPATCHER())
 	{
 		DistributedSnapshotCommitted	distributedSnapshotCommitted;

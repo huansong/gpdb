@@ -126,6 +126,18 @@ typedef struct SnapshotData *Snapshot;
 #define InvalidSnapshot		((Snapshot) NULL)
 
 /*
+ * GPDB-specific snapshot mode, either distributed snapshot or restore point based.
+ */
+typedef enum GpSnapshotMode {
+	/* Local only snapshot */
+	GP_SNAPSHOT_MODE_LOCAL,
+	/* Distributed snapshot, taking dtx into account */
+	GP_SNAPSHOT_MODE_DISTRIBUTED,
+	/* Restore point based snapshot, only for hot standby*/
+	GP_SNAPSHOT_MODE_RESTOREPOINT
+} GpSnapshotMode;
+
+/*
  * Struct representing all kind of possible snapshots.
  *
  * There are several different kinds of snapshots:
@@ -186,8 +198,7 @@ typedef struct SnapshotData
 
 	bool		takenDuringRecovery;	/* recovery-shaped snapshot? */
 	bool		copied;			/* false if it's a static snapshot */
-	bool		haveDistribSnapshot; /* True if this snapshot is distributed. */
-	bool		isRestorePointBased;
+	GpSnapshotMode 	snapshotMode; 		/* GP: is it a local, distributed, or restore-point based snapshot? */
 	/* Restore point name for this snapshot */
 	char 				rpname[MAXFNAMELEN];
 

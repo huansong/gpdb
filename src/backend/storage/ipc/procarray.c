@@ -1676,8 +1676,7 @@ SnapshotResetDslm(Snapshot snapshot)
 {
 	DistributedSnapshotWithLocalMapping *dslm;
 
-	snapshot->haveDistribSnapshot = false;
-	snapshot->isRestorePointBased = false;
+	snapshot->snapshotMode = GP_SNAPSHOT_MODE_LOCAL;
 
 	dslm = &snapshot->distribSnapshotWithLocalMapping;
 	dslm->currentLocalXidsCount = 0;
@@ -2281,25 +2280,21 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 
 	SnapshotResetDslm(snapshot);
 
+	snapshot->snapshotMode = QEDtxContextInfo.snapshotMode;
+
 	/* executor copy distributed snapshot from QEDtxContextInfo */
 	if ((distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_EXPLICIT_WRITER ||
 		 distributedTransactionContext == DTX_CONTEXT_QE_TWO_PHASE_IMPLICIT_WRITER ||
 		 distributedTransactionContext == DTX_CONTEXT_QE_AUTO_COMMIT_IMPLICIT ||
 		 distributedTransactionContext == DTX_CONTEXT_QE_ENTRY_DB_SINGLETON ||
 		 distributedTransactionContext == DTX_CONTEXT_QE_READER) &&
-		(QEDtxContextInfo.haveDistributedSnapshot || QEDtxContextInfo.isRestorePointBased) &&
+		(snapshot->snapshotMode != GP_SNAPSHOT_MODE_LOCAL) &&
 		!Debug_disable_distributed_snapshot)
 	{
-		if (QEDtxContextInfo.haveDistributedSnapshot)
-		{
+		if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 			DistributedSnapshot_Copy(&snapshot->distribSnapshotWithLocalMapping.ds, &QEDtxContextInfo.distributedSnapshot);
-			snapshot->haveDistribSnapshot = true;
-		}
-		else if (QEDtxContextInfo.isRestorePointBased)
-		{
+		else if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_RESTOREPOINT)
 			strncpy(snapshot->rpname, QEDtxContextInfo.rpname, MAXFNAMELEN);
-			snapshot->isRestorePointBased = true;
-		}
 	}
 
 	/* XXX: what to do with this?*/
@@ -2525,7 +2520,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 			&& needDistributedSnapshot)
 	{
 		CreateDistributedSnapshot(ds);
-		snapshot->haveDistribSnapshot = true;
+		snapshot->snapshotMode = GP_SNAPSHOT_MODE_DISTRIBUTED;
 
 		ereport(Debug_print_full_dtm ? LOG : DEBUG5,
 				(errmsg("Got distributed snapshot from CreateDistributedSnapshot")));
@@ -2547,7 +2542,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 */
 	if (!IS_QUERY_DISPATCHER())
 	{
-		if (snapshot->haveDistribSnapshot)
+		if (snapshot->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED)
 			globalxmin = DistributedLog_AdvanceOldestXmin(globalxmin,
 														  ds->xminAllDistributedSnapshots);
 		else if (!gp_maintenance_mode)
@@ -2602,7 +2597,7 @@ GetSnapshotData(Snapshot snapshot, DtxContext distributedTransactionContext)
 	 * DisribToLocalXact sorted lists.
 	 */
 	if (distributedTransactionContext == DTX_CONTEXT_QD_DISTRIBUTED_CAPABLE &&
-		snapshot->haveDistribSnapshot &&
+		snapshot->snapshotMode == GP_SNAPSHOT_MODE_DISTRIBUTED &&
 		ds->count > 1)
 		qsort(ds->inProgressXidArray, ds->count,
 			  sizeof(DistributedTransactionId), DistributedSnapshotMappedEntry_Compare);
