@@ -33,7 +33,7 @@ typedef struct AOVacuumRelStats
 	int		num_index_vacuumed; /* current # of indexes been vacuumed */
 } AOVacuumRelStats;
 
-extern Bitmapset *AppendOptimizedCollectDeadSegments(Relation aorel);
+extern Bitmapset *AppendOptimizedCollectDeadSegments(Relation aorel, TransactionId *latestToBeRemovedXid);
 extern void AppendOptimizedDropDeadSegments(Relation aorel, Bitmapset *segnos, AOVacuumRelStats *vacrelstats);
 extern void AppendOnlyCompact(Relation aorel,
 							  int compaction_segno,

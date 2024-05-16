@@ -941,6 +941,11 @@ void MetaTrackUpdObject(Oid		classid,
 	if (IsBootstrapProcessingMode())
 		return;
 
+#ifdef FAULT_INJECTOR
+	if (FaultInjector_InjectFaultIfSet("skip_meta_track_update", DDLNotSpecified, "", "") == FaultInjectorTypeSkip)
+		return;
+#endif
+
 	if (IsSharedRelation(classid))
 	{
 		rel = table_open(StatLastShOpRelationId, RowExclusiveLock);

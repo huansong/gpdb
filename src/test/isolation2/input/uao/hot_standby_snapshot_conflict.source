@@ -1,0 +1,190 @@
+---------------------------------------------------------------------
+-- Test for snapshot conflict that involve AO/CO tables on hot standby.
+---------------------------------------------------------------------
+
+-- Our mechanism for AO/CO snapshot conflict is to make sure we emit latestRemovedXid before
+-- we actually vacuum AO/CO segfiles (see ao_vacuum_rel_recycle_dead_segments). The AO/CO
+-- truncate WAL or the index vacuum WAL has no latestRemovedXid information. So it is key
+-- to test that the standby is not replaying those WALs unexpectedly.
+--
+-- During this test, we'll check whether it is the latestRemovedXid emitted by AO vacuum
+-- that conflicts with the standby query. We do that by injecting a fault that will only be
+-- hit by the specific relfilenode of the AO table, which can only happen with the emit record.
+
+-- Helper function to inject fault in the snapshot conflict resolution path for the relfilenode
+-- of our test table. We will only create conflict on seg0.
+create or replace function inject_resolve_snapshot_fault(p_relname text) returns void as $$
+declare
+    v_relfilenode oid;	/* in func */
+begin	/* in func */
+    select relfilenode into v_relfilenode from gp_dist_random('pg_class') where relname = p_relname and gp_segment_id = 0;	/* in func */
+    perform gp_inject_fault('resolve_snapshot_conflict', 'skip', '', '', v_relfilenode::regclass::text, 1, -1, 0, dbid, -1)	/* in func */
+      from gp_segment_configuration	/* in func */
+      where content = 0 and role = 'm';	/* in func */
+end;	/* in func */
+$$ language plpgsql;
+
+-- start_matchsubs
+-- m/table name:'\d+'/
+-- s/table name:'\d+'//
+-- m/gp_inject_fault\s+/
+-- m/gp_inject_fault//
+-- end_matchsubs
+
+-- A VACUUM includes updating pg_stat_last_operation for metadata tracking. Such updates
+-- may involve pruning the heap pages which might also emit latestRemovedXid. In order
+-- for such updates to not affect our testing, we skip them in this test.
+select gp_inject_fault_infinite('skip_meta_track_update', 'skip',dbid) from gp_segment_configuration where content = -1 and role = 'p';
+
+-- the test starts with no defer in vacuum (GUC being 0)
+show vacuum_defer_cleanup_age;
+-- the test assumes we have remote_apply, otherwise the test result is totally unpredictable.
+show synchronous_commit;
+
+create table hs_qc_@amname@(a int) using @amname@;
+create index on hs_qc_@amname@(a);
+
+---------------------------------------------------------------------
+-- Basic case: vacuum conflicts with standby query
+---------------------------------------------------------------------
+1: insert into hs_qc_@amname@ select * from generate_series(1,10);
+
+-- take the snapshot on the standby first
+-1S: begin transaction isolation level repeatable read;
+-1S: select count(*) from hs_qc_@amname@;
+
+1: select inject_resolve_snapshot_fault('hs_qc_@amname@');
+
+-- delete & vacuum rows on the primary
+1: delete from hs_qc_@amname@ where a = 2;
+1: vacuum hs_qc_@amname@;
+
+-- The standby query should have conflict and is cancelled
+-1S: select count(*) from hs_qc_@amname@;
+-1S: end;
+
+-- there should be 1 hit
+1: select gp_inject_fault('resolve_snapshot_conflict', 'status', dbid) from gp_segment_configuration where content = 0 and role = 'm';
+1: select gp_inject_fault('resolve_snapshot_conflict', 'reset', dbid) from gp_segment_configuration where content = 0 and role = 'm';
+
+1: truncate hs_qc_@amname@;
+
+---------------------------------------------------------------------
+-- Primary's initial vacuum does not truncate the AO segfile due to 
+-- concurrent query on the primary. The standby won't get conflict in
+-- that vacuum, but will do in future vacuum that truncates the segfile.
+---------------------------------------------------------------------
+1: insert into hs_qc_@amname@ select * from generate_series(1,10);
+2: begin transaction isolation level repeatable read;
+2: select count(*) from hs_qc_@amname@;
+
+-1S: begin transaction isolation level repeatable read;
+-1S: select count(*) from hs_qc_@amname@;
+
+1: select inject_resolve_snapshot_fault('hs_qc_@amname@');
+
+-- the initial vacuum won't truncate the segfile
+1: delete from hs_qc_@amname@ where a = 2;
+1: vacuum hs_qc_@amname@;
+
+-- the standby query is fine
+-1S: select count(*) from hs_qc_@amname@;
+
+-- there should be no hit yet
+1: select gp_inject_fault('resolve_snapshot_conflict', 'status', dbid) from gp_segment_configuration where content = 0 and role = 'm';
+
+-- now w/o the concurrent query, the vacuum would go through
+2: end;
+1: vacuum hs_qc_@amname@;
+
+-- and the standby query gets cancelled
+-1S: select count(*) from hs_qc_@amname@;
+-1S: end;
+
+-- there should be 1 hit
+1: select gp_inject_fault('resolve_snapshot_conflict', 'status', dbid) from gp_segment_configuration where content = 0 and role = 'm';
+1: select gp_inject_fault('resolve_snapshot_conflict', 'reset', dbid) from gp_segment_configuration where content = 0 and role = 'm';
+
+1: truncate hs_qc_@amname@;
+
+---------------------------------------------------------------------
+-- VACUUM of a table that standby is NOT accessing can still cause conflict,
+-- since the query conflict is based on snapshot, w/o regard to specific relations.
+---------------------------------------------------------------------
+1: insert into hs_qc_@amname@ select * from generate_series(1,10);
+1: create table hs_qc_@amname@_other(a int) using @amname@;
+
+-- select from a different table
+-1S: begin transaction isolation level repeatable read;
+-1S: select count(*) from hs_qc_@amname@_other;
+
+1: select inject_resolve_snapshot_fault('hs_qc_@amname@');
+
+1: delete from hs_qc_@amname@ where a = 2;
+1: vacuum hs_qc_@amname@;
+
+-- it still conflicts
+-1S: select count(*) from hs_qc_@amname@_other;
+-1S: end;
+
+-- there should be 1 hit
+1: select gp_inject_fault('resolve_snapshot_conflict', 'status', dbid) from gp_segment_configuration where content = 0 and role = 'm';
+1: select gp_inject_fault('resolve_snapshot_conflict', 'reset', dbid) from gp_segment_configuration where content = 0 and role = 'm';
+
+1: truncate hs_qc_@amname@;
+
+---------------------------------------------------------------------
+-- VACUUM in a different database won't cause conflict.
+---------------------------------------------------------------------
+1: create database a_different_db;
+1q:
+1:@db_name a_different_db: create table a_different_t(a int) using @amname@;
+1:@db_name a_different_db: insert into a_different_t select * from generate_series(1,10);
+
+-1S: begin transaction isolation level repeatable read;
+-1S: select count(*) from hs_qc_@amname@;
+
+1:@db_name a_different_db: delete from a_different_t;
+1:@db_name a_different_db: vacuum a_different_t;
+
+-- won't conflict
+-1S: select count(*) from hs_qc_@amname@;
+
+1q:
+1: drop database a_different_db;
+
+---------------------------------------------------------------------
+-- Test that the vacuum_defer_cleanup_age GUC is respected
+--
+-- XXX: upstream has removed this GUC (1118cd37eb61e6a2428f457a8b2026a7bb3f801a). We should consider doing that too.
+-- But for the current being, it's the only thing that we can rely on for mitigating conflict for
+-- archive recovery hot standby (e.g. Disaster Reocvery cluster).
+---------------------------------------------------------------------
+!\retcode gpconfig -c vacuum_defer_cleanup_age -v 1;
+!\retcode gpstop -u;
+
+1: insert into hs_qc_@amname@ select * from generate_series(1,10);
+
+-1S: begin transaction isolation level repeatable read;
+-1S: select count(*) from hs_qc_@amname@;
+
+-- VACUUM won't cleanup this table since the DELETE is still within vacuum_defer_cleanup_age
+1: delete from hs_qc_@amname@;
+1: vacuum hs_qc_@amname@;
+
+-- hot standby can still query the table
+-1S: select count(*) from hs_qc_@amname@;
+
+-- only if the age is reached, hot standby will get the conflict
+1: create temp table tt1(a int);
+1: vacuum hs_qc_@amname@;
+
+-1S: select count(*) from hs_qc_@amname@;
+-1S: end;
+
+!\retcode gpconfig -r vacuum_defer_cleanup_age;
+!\retcode gpstop -u;
+
+-- reset faults
+select gp_inject_fault('skip_meta_track_update', 'reset', dbid) from gp_segment_configuration where content = -1 and role = 'p';
+

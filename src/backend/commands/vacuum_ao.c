@@ -120,6 +120,7 @@
 #include "access/appendonlywriter.h"
 #include "access/appendonly_compaction.h"
 #include "access/genam.h"
+#include "access/heapam_xlog.h"
 #include "access/multixact.h"
 #include "access/visibilitymap.h"
 #include "access/xact.h"
@@ -467,11 +468,22 @@ ao_vacuum_rel_recycle_dead_segments(Relation onerel, VacuumParams *params,
 	Bitmapset	*dead_segs;
 	int			options = params->options;
 	bool		need_drop;
+	TransactionId	latestToBeRemovedXid = InvalidTransactionId;
 
-	dead_segs = AppendOptimizedCollectDeadSegments(onerel);
+	dead_segs = AppendOptimizedCollectDeadSegments(onerel, &latestToBeRemovedXid);
 	need_drop = !bms_is_empty(dead_segs);
 	if (need_drop)
 	{
+		/*
+		 * Emit latestRemovedXid in WAL record so a hot standby can get the
+		 * conflict with whatever segment we are about to truncate later.
+		 * We overload the XLOG_HEAP2_CLEANUP_INFO record as it is not really
+		 * necessary to introduce a new WAL type for ao/co.
+		 */
+		Assert(latestToBeRemovedXid != InvalidTransactionId);
+		if (RelationNeedsWAL(onerel) && XLogIsNeeded())
+			log_heap_cleanup_info(onerel->rd_node, latestToBeRemovedXid);
+
 		/*
 		 * Vacuum indexes only when we do find AWAITING_DROP segments.
 		 *

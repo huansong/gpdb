@@ -29,6 +29,7 @@
 #include "storage/procarray.h"
 #include "storage/sinvaladt.h"
 #include "storage/standby.h"
+#include "utils/builtins.h"
 #include "utils/faultinjector.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
@@ -337,6 +338,19 @@ ResolveRecoveryConflictWithSnapshot(TransactionId latestRemovedXid, RelFileNode 
 
 	backends = GetConflictingVirtualXIDs(latestRemovedXid,
 										 node.dbNode);
+
+#ifdef FAULT_INJECTOR
+	/*
+	 * for testing that the conflict originates from certain table - we 
+	 * inject fault that uses the relfilenode as the table name string.
+	 */
+	if (VirtualTransactionIdIsValid(*backends))
+	{
+		char 	relnodestr[16];
+		pg_ltoa(node.relNode, relnodestr);
+		FaultInjector_InjectFaultIfSet("resolve_snapshot_conflict", DDLNotSpecified, "", relnodestr);
+	}
+#endif
 
 	ResolveRecoveryConflictWithVirtualXIDs(backends,
 										   PROCSIG_RECOVERY_CONFLICT_SNAPSHOT,

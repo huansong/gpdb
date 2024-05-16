@@ -172,6 +172,8 @@ ao_truncate_replay(XLogReaderState *record)
 	}
 
 	FileClose(file);
+
+	SIMPLE_FAULT_INJECTOR("ao_truncate_replay_finished");
 }
 
 void
