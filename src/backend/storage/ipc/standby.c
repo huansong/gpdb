@@ -30,6 +30,7 @@
 #include "storage/sinvaladt.h"
 #include "storage/standby.h"
 #include "utils/faultinjector.h"
+#include "utils/guc.h"
 #include "utils/hsearch.h"
 #include "utils/memutils.h"
 #include "utils/ps_status.h"
@@ -395,7 +396,8 @@ ResolveRecoveryConflictWithSnapshot(TransactionId latestRemovedXid, RelFileNode 
 	ResolveRecoveryConflictWithVirtualXIDs(backends,
 										   PROCSIG_RECOVERY_CONFLICT_SNAPSHOT,
 										   true);
-	invalidateRestorePoint(latestRemovedXid);
+	if (gp_hot_standby_snapshot_mode == HS_SNAPSHOT_RESTOREPOINT)
+		invalidateRestorePoint(latestRemovedXid);
 }
 
 void

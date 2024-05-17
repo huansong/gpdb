@@ -2,7 +2,7 @@
 
 !\retcode gpconfig -c gp_hot_standby_snapshot_mode -v restorepoint;
 (exited with code 0)
-!\retcode gpstop -u;
+!\retcode gpstop -ar;
 (exited with code 0)
 
 ----------------------------------------------------------------
@@ -126,57 +126,12 @@ SET
 (6 rows)
 
 ----------------------------------------------------------------
--- More testing around the gp_hot_standby_snapshot_mode and
--- gp_hot_standby_snapshot_restore_point_name GUCs
+-- More testing around the gp_hot_standby_snapshot_restore_point_name GUC
 ----------------------------------------------------------------
-
--- standby uses "unsync" snapshot mode, will see the latest result (which might be
--- inconsistent in real life because that can only guarantteed with making sure all
--- standby has replayed the same RP).
--1S: set gp_hot_standby_snapshot_mode = unsync;
-SET
--1S: select * from hs_rp_basic;
- a | b                                     
----+---------------------------------------
- 5 | complete_before_rp1_2pc               
- 5 | complete_after_rp1_2pc                
- 5 | complete_after_rp1                    
- 5 | in_progress_at_rp1_complete_after_rp1 
- 5 | complete_after_rp2_2pc                
- 5 | complete_after_rp2_1pc                
- 2 | complete_before_rp1_2pc               
- 3 | complete_before_rp1_2pc               
- 4 | complete_before_rp1_2pc               
- 2 | complete_after_rp1_2pc                
- 3 | complete_after_rp1_2pc                
- 4 | complete_after_rp1_2pc                
- 2 | complete_after_rp1                    
- 3 | complete_after_rp1                    
- 4 | complete_after_rp1                    
- 2 | in_progress_at_rp1_complete_after_rp1 
- 3 | in_progress_at_rp1_complete_after_rp1 
- 4 | in_progress_at_rp1_complete_after_rp1 
- 2 | complete_after_rp2_2pc                
- 3 | complete_after_rp2_2pc                
- 4 | complete_after_rp2_2pc                
- 2 | complete_after_rp2_1pc                
- 3 | complete_after_rp2_1pc                
- 4 | complete_after_rp2_1pc                
- 1 | complete_before_rp1_2pc               
- 1 | complete_before_rp1_1pc               
- 1 | complete_after_rp1_2pc                
- 1 | complete_after_rp1_1pc                
- 1 | complete_after_rp1                    
- 1 | in_progress_at_rp1_complete_after_rp1 
- 1 | complete_after_rp2_2pc                
- 1 | complete_after_rp2_1pc                
-(32 rows)
 
 -- standby uses "restorepoint" snapshot mode, but gives no RP name, should use the
 -- latest RP which is "rp2". This can be inconsistent in real life too, if not with
 -- the "synchronous_commit=remote_apply" setting.
--1S: set gp_hot_standby_snapshot_mode = restorepoint;
-SET
 -1S: reset gp_hot_standby_snapshot_restore_point_name;
 RESET
 -1S: select * from hs_rp_basic;
@@ -186,6 +141,12 @@ RESET
  5 | complete_after_rp1_2pc                
  5 | complete_after_rp1                    
  5 | in_progress_at_rp1_complete_after_rp1 
+ 1 | complete_before_rp1_2pc               
+ 1 | complete_before_rp1_1pc               
+ 1 | complete_after_rp1_2pc                
+ 1 | complete_after_rp1_1pc                
+ 1 | complete_after_rp1                    
+ 1 | in_progress_at_rp1_complete_after_rp1 
  2 | complete_before_rp1_2pc               
  3 | complete_before_rp1_2pc               
  4 | complete_before_rp1_2pc               
@@ -198,12 +159,6 @@ RESET
  2 | in_progress_at_rp1_complete_after_rp1 
  3 | in_progress_at_rp1_complete_after_rp1 
  4 | in_progress_at_rp1_complete_after_rp1 
- 1 | complete_before_rp1_2pc               
- 1 | complete_before_rp1_1pc               
- 1 | complete_after_rp1_2pc                
- 1 | complete_after_rp1_1pc                
- 1 | complete_after_rp1                    
- 1 | in_progress_at_rp1_complete_after_rp1 
 (22 rows)
 
 -- standby uses an invalid RP name, should complain
@@ -485,6 +440,7 @@ INSERT 0 10
 --in-progress tx at the time of RP, won't be seen
 2: end;
 COMMIT
+2q: ... <quitting>
 
 -- standby coordinator restarts
 -1S: select gp_inject_fault('exec_simple_query_start', 'panic', dbid) from gp_segment_configuration where content=-1 and role='m';
@@ -548,49 +504,29 @@ SET
 DELETE 10
 1: vacuum hs_rp_conflict;
 VACUUM
+1q: ... <quitting>
 
 -- The RP is invalidated and the snapshot deleted, the query will fail
 -1S: select count(*) from hs_rp_conflict;
 ERROR:  cannot find snapshot to use for restore point "rp_conflict"  (seg0 slice1 127.0.1.1:7005 pid=26425)
 HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
+-1Sq: ... <quitting>
 
 -- Because the VACUUM invalidates the latest RP, it effectively also invalidated all
 -- RPs prior to that. So segments shouldn't have any snapshots left on disk.
 -- In order to run the pg_ls_dir, set the snapshot mode to unsync (since all RPs/snapshots are gone).
--1S: set gp_hot_standby_snapshot_mode = 'unsync';
-SET
+-- Go back to unsync for any other tests
+!\retcode gpconfig -c gp_hot_standby_snapshot_mode -v unsync;
+(exited with code 0)
+!\retcode gpstop -ar;
+(exited with code 0)
+
+-- there shouldn't be any previously exported snapshots left
 -1S: select gp_segment_id, pg_ls_dir('pg_snapshots') from gp_dist_random('gp_id');
  gp_segment_id | pg_ls_dir 
 ---------------+-----------
 (0 rows)
--- the coordinator still has it because the VACUUM only cleans up row on segments - so conflict only on segments too
--1S: select pg_ls_dir('pg_snapshots');
- pg_ls_dir                                  
---------------------------------------------
- gp_snapshot_for_restorepoint_rp-qd-only    
- gp_snapshot_for_restorepoint_rp2           
- gp_snapshot_for_restorepoint_rptest_crash1 
- gp_snapshot_for_restorepoint_rptest_crash2 
- gp_snapshot_for_restorepoint_rp1           
- gp_snapshot_for_restorepoint_rp_conflict   
- gp_snapshot_for_restorepoint_rp-qe-only    
-(7 rows)
-
--- But if we vacuum something on coordinator (using utility mode), then it would invalidate all RPs and delete snapshots too.
--1U: insert into hs_rp_conflict values(1);
-INSERT 0 1
--1U: delete from hs_rp_conflict;
-DELETE 1
--1U: vacuum hs_rp_conflict;
-VACUUM
 -1S: select pg_ls_dir('pg_snapshots');
  pg_ls_dir 
 -----------
 (0 rows)
-
--- Go back to unsync for any other tests
-!\retcode gpconfig -c gp_hot_standby_snapshot_mode -v unsync;
-(exited with code 0)
-!\retcode gpstop -u;
-(exited with code 0)
-

@@ -324,7 +324,7 @@ CreateSharedMemoryAndSemaphores(int port)
 	GPMemoryProtect_ShmemInit();
 
 	/* Init restore point to snapshot hash table info for hot standby */
-	if (EnableHotStandby)
+	if (EnableHotStandby && gp_hot_standby_snapshot_mode == HS_SNAPSHOT_RESTOREPOINT)
 		InitRestorePointHash();
 
 	CreateSharedProcArray();

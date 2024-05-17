@@ -420,6 +420,7 @@ static char *gp_server_version_string;
 /* Hot standby snapshot mode related settings */
 int gp_hot_standby_snapshot_mode = HS_SNAPSHOT_UNSYNC;
 char *gp_hot_standby_snapshot_restore_point_name = NULL;
+int gp_max_restore_point_snapshots;
 
 /* Query Metrics */
 bool		gp_enable_query_metrics = false;
@@ -4439,6 +4440,16 @@ struct config_int ConfigureNamesInt_gp[] =
 		NULL, NULL, NULL
 	},
 #endif
+
+	{
+		{"gp_max_restore_point_snapshots", PGC_POSTMASTER, CUSTOM_OPTIONS,
+			gettext_noop("Sets the maximum restore point based snapshots the server keeps track of. This is not a hard limit."),
+			NULL, GUC_NOT_IN_SAMPLE
+		},
+		&gp_max_restore_point_snapshots,
+		64, 0, 10000,
+		NULL, NULL, NULL
+	},
 
 	/* End-of-list marker */
 	{

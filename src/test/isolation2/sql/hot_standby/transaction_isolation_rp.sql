@@ -1,7 +1,7 @@
 -- Tests for restore point (RP) based transaction isolation for hot standby
 
 !\retcode gpconfig -c gp_hot_standby_snapshot_mode -v restorepoint;
-!\retcode gpstop -u;
+!\retcode gpstop -ar;
 
 ----------------------------------------------------------------
 -- Basic transaction isolation test
@@ -49,20 +49,12 @@
 -1S: select * from hs_rp_basic;
 
 ----------------------------------------------------------------
--- More testing around the gp_hot_standby_snapshot_mode and 
--- gp_hot_standby_snapshot_restore_point_name GUCs
+-- More testing around the gp_hot_standby_snapshot_restore_point_name GUC
 ----------------------------------------------------------------
-
--- standby uses "unsync" snapshot mode, will see the latest result (which might be 
--- inconsistent in real life because that can only guarantteed with making sure all
--- standby has replayed the same RP).
--1S: set gp_hot_standby_snapshot_mode = unsync;
--1S: select * from hs_rp_basic;
 
 -- standby uses "restorepoint" snapshot mode, but gives no RP name, should use the
 -- latest RP which is "rp2". This can be inconsistent in real life too, if not with
 -- the "synchronous_commit=remote_apply" setting.
--1S: set gp_hot_standby_snapshot_mode = restorepoint;
 -1S: reset gp_hot_standby_snapshot_restore_point_name;
 -1S: select * from hs_rp_basic;
 
@@ -191,6 +183,7 @@
 
 --in-progress tx at the time of RP, won't be seen
 2: end;
+2q:
 
 -- standby coordinator restarts
 -1S: select gp_inject_fault('exec_simple_query_start', 'panic', dbid) from gp_segment_configuration where content=-1 and role='m';
@@ -223,25 +216,19 @@
 -1S: set gp_hot_standby_snapshot_restore_point_name = 'rp_conflict';
 1: delete from hs_rp_conflict;
 1: vacuum hs_rp_conflict;
+1q:
 
 -- The RP is invalidated and the snapshot deleted, the query will fail
 -1S: select count(*) from hs_rp_conflict;
+-1Sq:
 
 -- Because the VACUUM invalidates the latest RP, it effectively also invalidated all 
 -- RPs prior to that. So segments shouldn't have any snapshots left on disk.
 -- In order to run the pg_ls_dir, set the snapshot mode to unsync (since all RPs/snapshots are gone).
--1S: set gp_hot_standby_snapshot_mode = 'unsync';
--1S: select gp_segment_id, pg_ls_dir('pg_snapshots') from gp_dist_random('gp_id');
--- the coordinator still has it because the VACUUM only cleans up row on segments - so conflict only on segments too
--1S: select pg_ls_dir('pg_snapshots');
-
--- But if we vacuum something on coordinator (using utility mode), then it would invalidate all RPs and delete snapshots too.
--1U: insert into hs_rp_conflict values(1);
--1U: delete from hs_rp_conflict;
--1U: vacuum hs_rp_conflict;
--1S: select pg_ls_dir('pg_snapshots');
-
 -- Go back to unsync for any other tests
 !\retcode gpconfig -c gp_hot_standby_snapshot_mode -v unsync;
-!\retcode gpstop -u;
+!\retcode gpstop -ar;
 
+-- there shouldn't be any previously exported snapshots left
+-1S: select gp_segment_id, pg_ls_dir('pg_snapshots') from gp_dist_random('gp_id');
+-1S: select pg_ls_dir('pg_snapshots');

@@ -7329,14 +7329,14 @@ StartupXLOG(void)
 		/*
 		 * Likewise, delete any saved transaction snapshot files that got left
 		 * behind by crashed backends.
-		 * GPDB: for a hot standby, don't delete those that were generated for
-		 * restore point based snapshot isolation - we'll need them in 
-		 * ScanAndRememberAllSnapshots() later.
+		 * GPDB: for a hot standby under 'restorepoint' mode, don't delete
+		 * those that were generated for restore point based snapshot
+		 * isolation - we'll need them in ScanAndRememberAllSnapshots() later.
 		 */
-		if (!(ArchiveRecoveryRequested && EnableHotStandby))
-			DeleteAllExportedSnapshotFiles();
-		else
+		if (ArchiveRecoveryRequested && EnableHotStandby && gp_hot_standby_snapshot_mode == HS_SNAPSHOT_RESTOREPOINT)
 			DeleteAllButRpBasedExportedSnapshotFiles();
+		else
+			DeleteAllExportedSnapshotFiles();
 
 		/*
 		 * Initialize for Hot Standby, if enabled. We won't let backends in
@@ -7411,7 +7411,8 @@ StartupXLOG(void)
 			 * directory. We might soon be replaying the same restore point WAL records
 			 * too, but that's OK - we'll ignore them and won't remember them again.
 			 */
-			ScanAndRememberAllSnapshots();
+			if (gp_hot_standby_snapshot_mode == HS_SNAPSHOT_RESTOREPOINT)
+				ScanAndRememberAllSnapshots();
 		}
 
 		/* Initialize resource managers */
@@ -10958,12 +10959,15 @@ xlog_redo(XLogReaderState *record)
 	else if (info == XLOG_RESTORE_POINT)
 	{
 		/*
-		 * GPDB: on hot standby, remember this RP and create snapshot for it.
+		 * GPDB: on hot standby under the 'restorepoint" snapshot mode,
+		 * remember this RP and create snapshot for it.
 		 * This will be used for restorepoint based snapshot isolation on hot
 		 * standby. The feature is only supported for MPP operation, so don't 
 		 * do this in single-node mode such as utility or maintenance mode.
 		 */
-		if (EnableHotStandby && ArchiveRecoveryRequested && Gp_role != GP_ROLE_UTILITY && !gp_maintenance_mode)
+		if (EnableHotStandby && ArchiveRecoveryRequested
+					&& gp_hot_standby_snapshot_mode == HS_SNAPSHOT_RESTOREPOINT
+					&& Gp_role != GP_ROLE_UTILITY && !gp_maintenance_mode)
 		{
 			RestorePointInfo 		rp;
 			bool 				found;
@@ -13790,8 +13794,8 @@ InitRestorePointHash(void)
 	long		init_table_size,
 				max_table_size;
 
-	init_table_size = 16;
-	max_table_size = 64;
+	init_table_size = gp_max_restore_point_snapshots;
+	max_table_size = gp_max_restore_point_snapshots;
 
 	/* Allocate hash table for RestorePointInfoData structs. */
 	MemSet(&info, 0, sizeof(info));
