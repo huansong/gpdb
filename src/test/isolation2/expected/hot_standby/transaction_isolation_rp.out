@@ -129,44 +129,19 @@ SET
 -- More testing around the gp_hot_standby_snapshot_restore_point_name GUC
 ----------------------------------------------------------------
 
--- standby uses "restorepoint" snapshot mode, but gives no RP name, should use the
--- latest RP which is "rp2". This can be inconsistent in real life too, if not with
--- the "synchronous_commit=remote_apply" setting.
+-- standby uses "restorepoint" snapshot mode, but gives no RP name, should error out.
 -1S: reset gp_hot_standby_snapshot_restore_point_name;
 RESET
 -1S: select * from hs_rp_basic;
- a | b                                     
----+---------------------------------------
- 5 | complete_before_rp1_2pc               
- 5 | complete_after_rp1_2pc                
- 5 | complete_after_rp1                    
- 5 | in_progress_at_rp1_complete_after_rp1 
- 1 | complete_before_rp1_2pc               
- 1 | complete_before_rp1_1pc               
- 1 | complete_after_rp1_2pc                
- 1 | complete_after_rp1_1pc                
- 1 | complete_after_rp1                    
- 1 | in_progress_at_rp1_complete_after_rp1 
- 2 | complete_before_rp1_2pc               
- 3 | complete_before_rp1_2pc               
- 4 | complete_before_rp1_2pc               
- 2 | complete_after_rp1_2pc                
- 3 | complete_after_rp1_2pc                
- 4 | complete_after_rp1_2pc                
- 2 | complete_after_rp1                    
- 3 | complete_after_rp1                    
- 4 | complete_after_rp1                    
- 2 | in_progress_at_rp1_complete_after_rp1 
- 3 | in_progress_at_rp1_complete_after_rp1 
- 4 | in_progress_at_rp1_complete_after_rp1 
-(22 rows)
+ERROR:  gp_hot_standby_snapshot_restore_point_name is not set
+HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
 
 -- standby uses an invalid RP name, should complain
 -1S: set gp_hot_standby_snapshot_restore_point_name = 'rp-non-exist';
 SET
 -1S: select * from hs_rp_basic;
 ERROR:  cannot find snapshot to use for restore point "rp-non-exist"
-HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
+HINT:  The restore point does not exist or the snapshot has been invalidated.
 
 -- primary creates a same-name RP, standby won't create snapshot for it,
 -- and still use the old snapshot
@@ -215,10 +190,10 @@ SET
 SET
 -1S: select * from hs_rp_basic;
 ERROR:  cannot find snapshot to use for restore point "rp-qe-only"
-HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
--- And if we use the latest RP, we would be using 'rp2' and see corresponding results.
--1S: reset gp_hot_standby_snapshot_restore_point_name;
-RESET
+HINT:  The restore point does not exist or the snapshot has been invalidated.
+-- And if we use 'rp2', it should work.
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp2';
+SET
 -1S: select * from hs_rp_basic;
  a | b                                     
 ---+---------------------------------------
@@ -273,15 +248,9 @@ RESET
 -1S: set gp_hot_standby_snapshot_restore_point_name = 'rp-qd-only';
 SET
 -1S: select * from hs_rp_basic;
-ERROR:  cannot find snapshot to use for restore point "rp-qd-only"  (seg0 slice1 127.0.1.1:7005 pid=26323)
-HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
--- If we use the latest RP, it would still be the one above, so same result.
--1S: reset gp_hot_standby_snapshot_restore_point_name;
-RESET
--1S: select * from hs_rp_basic;
-ERROR:  cannot find snapshot to use for restore point "rp-qd-only"  (seg0 slice1 127.0.1.1:7005 pid=26323)
-HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
--- Unless we use an RP that we know is consistent
+ERROR:  cannot find snapshot to use for restore point "rp-qd-only"  (seg0 slice1 127.0.1.1:7005 pid=19028)
+HINT:  The restore point does not exist or the snapshot has been invalidated.
+-- And if we use 'rp2', it should work.
 -1S: set gp_hot_standby_snapshot_restore_point_name = 'rp2';
 SET
 -1S: select * from hs_rp_basic;
@@ -508,8 +477,8 @@ VACUUM
 
 -- The RP is invalidated and the snapshot deleted, the query will fail
 -1S: select count(*) from hs_rp_conflict;
-ERROR:  cannot find snapshot to use for restore point "rp_conflict"  (seg0 slice1 127.0.1.1:7005 pid=26425)
-HINT:  Create a new restore point on primary coordinator and set gp_hot_standby_snapshot_restore_point_name accordingly.
+ERROR:  cannot find snapshot to use for restore point "rp_conflict"  (seg0 slice1 127.0.1.1:7005 pid=19125)
+HINT:  The restore point does not exist or the snapshot has been invalidated.
 -1Sq: ... <quitting>
 
 -- Because the VACUUM invalidates the latest RP, it effectively also invalidated all

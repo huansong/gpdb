@@ -72,7 +72,6 @@ typedef struct TmControlBlock
 	uint32						NextSnapshotId;
 	int							num_committed_xacts;
 	slock_t						gxidGenLock;
-	char 						latest_restore_point_name[MAXFNAMELEN];
 
 	/* Array [0..max_tm_gxacts-1] of DistributedTransactionId ptrs is appended starting here */
 	DistributedTransactionId committed_gxid_array[FLEXIBLE_ARRAY_MEMBER];
@@ -1133,7 +1132,6 @@ tmShmemInit(void)
 	shmGxidGenLock = &shared->gxidGenLock;
 	shmNumCommittedGxacts = &shared->num_committed_xacts;
 	shmCommittedGxidArray = &shared->committed_gxid_array[0];
-	shmLatestRpName = &shared->latest_restore_point_name[0];
 
 	if (!IsUnderPostmaster)
 		/* Initialize locks and shared memory area */

@@ -11009,7 +11009,6 @@ xlog_redo(XLogReaderState *record)
 			DistributedTransactionContext = DTX_CONTEXT_LOCAL_ONLY;
 
 			rp->xmin = snapshot->xmin;
-			strcpy(shmLatestRpName, rpname);
 			LWLockRelease(RestorePointHashLock);
 		}
 	}

@@ -345,11 +345,11 @@ static Snapshot GetRestorePointBasedSnapshot(void)
 	{
 		if (!gp_hot_standby_snapshot_restore_point_name)
 		{
-			ereport(DEBUG1,
-					(errcode(ERRCODE_UNDEFINED_PARAMETER),
-					errmsg("gp_hot_standby_snapshot_restore_point_name is not set, use the latest RP \"%s\"",
-								shmLatestRpName)));
-			strcpy(rpname, shmLatestRpName);
+			ereport(ERROR,
+						(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("gp_hot_standby_snapshot_restore_point_name is not set"),
+						errhint("Create a new restore point on primary coordinator and set "
+							"gp_hot_standby_snapshot_restore_point_name accordingly.")));
 		}
 		else
 		{
@@ -369,8 +369,7 @@ static Snapshot GetRestorePointBasedSnapshot(void)
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					errmsg("cannot find snapshot to use for restore point \"%s\"",
 								rpname),
-					errhint("Create a new restore point on primary coordinator and set "
-						"gp_hot_standby_snapshot_restore_point_name accordingly.")));
+					errhint("The restore point does not exist or the snapshot has been invalidated.")));
 
 	sprintf(snapshotname, "%s%s",
 				RP_SNAPSHOT_PREFIX,

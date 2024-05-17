@@ -295,8 +295,6 @@ extern slock_t *shmGxidGenLock;
 extern DistributedTransactionId *shmCommittedGxidArray;
 extern volatile int *shmNumCommittedGxacts;
 
-extern char *shmLatestRpName;
-
 extern bool IsDtxRecoveryProcess(void);
 
 extern char *DtxStateToString(DtxState state);

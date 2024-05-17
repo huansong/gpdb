@@ -52,9 +52,7 @@
 -- More testing around the gp_hot_standby_snapshot_restore_point_name GUC
 ----------------------------------------------------------------
 
--- standby uses "restorepoint" snapshot mode, but gives no RP name, should use the
--- latest RP which is "rp2". This can be inconsistent in real life too, if not with
--- the "synchronous_commit=remote_apply" setting.
+-- standby uses "restorepoint" snapshot mode, but gives no RP name, should error out.
 -1S: reset gp_hot_standby_snapshot_restore_point_name;
 -1S: select * from hs_rp_basic;
 
@@ -84,8 +82,8 @@
 -- This RP is only replayed on (some) QEs so far, so the query will fail.
 -1S: set gp_hot_standby_snapshot_restore_point_name = 'rp-qe-only';
 -1S: select * from hs_rp_basic;
--- And if we use the latest RP, we would be using 'rp2' and see corresponding results.
--1S: reset gp_hot_standby_snapshot_restore_point_name;
+-- And if we use 'rp2', it should work.
+-1S: set gp_hot_standby_snapshot_restore_point_name = 'rp2';
 -1S: select * from hs_rp_basic;
 
 -- resume replay on QD
@@ -100,10 +98,7 @@
 -- This RP is only replayed on QD so far, so the query will fail.
 -1S: set gp_hot_standby_snapshot_restore_point_name = 'rp-qd-only';
 -1S: select * from hs_rp_basic;
--- If we use the latest RP, it would still be the one above, so same result.
--1S: reset gp_hot_standby_snapshot_restore_point_name;
--1S: select * from hs_rp_basic;
--- Unless we use an RP that we know is consistent
+-- And if we use 'rp2', it should work.
 -1S: set gp_hot_standby_snapshot_restore_point_name = 'rp2';
 -1S: select * from hs_rp_basic;
 
